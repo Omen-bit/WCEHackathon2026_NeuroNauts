@@ -7,6 +7,7 @@ import html
 from pathlib import Path
 from dotenv import load_dotenv
 from pymilvus import connections, Collection
+from mindmap_logic import fetch_hierarchy, render_mindmap
 
 load_dotenv()
 
@@ -188,20 +189,31 @@ def retrieve(query):
     col = load_milvus()
     vec = embed_query(query)
 
+    # ── Robust field discovery ──────────────────────────────
+    available_fields = [f.name for f in col.schema.fields]
+    
+    # Try to find the best fields to fetch
+    text_f = "clean_text" if "clean_text" in available_fields else ("text" if "text" in available_fields else None)
+    full_f = "full_text" if "full_text" in available_fields else ("text" if "text" in available_fields else None)
+    
+    output_fields = ["section_path", "page_numbers", "image_refs"]
+    if text_f: output_fields.append(text_f)
+    if full_f and full_f != text_f: output_fields.append(full_f)
+
     results = col.search(
         data=[vec],
         anns_field="embedding",
         param={"metric_type": "COSINE", "params": {"ef": 64}},
         limit=TOP_K,
-        output_fields=["clean_text","full_text","section_path","page_numbers","image_refs"],
+        output_fields=output_fields,
     )
 
     chunks = []
     for hit in results[0]:
         e = hit.entity
         chunks.append({
-            "clean_text": e.get("clean_text"),
-            "full_text": e.get("full_text"),
+            "clean_text": e.get(text_f or "text", "No text found"),
+            "full_text": e.get(full_f or "text", "No text found"),
             "section_path": e.get("section_path"),
             "page_numbers": json.loads(e.get("page_numbers","[]")),
             "image_refs": json.loads(e.get("image_refs","[]"))
@@ -211,16 +223,48 @@ def retrieve(query):
 def build_context(chunks):
     return "\n\n".join([c["full_text"] for c in chunks])[:MAX_CONTEXT_CHARS]
 
-def call_llm(q, context):
-    payload = {
-        "model": CHAT_MODEL,
-        "messages": [
-            {"role":"system","content":"Answer only from context. Do NOT generate HTML."},
-            {"role":"user","content":f"Context:\n{context}\n\nQ: {q}"}
-        ]
+import requests
+import os
+
+def call_llm(query, context):
+    api_key = os.getenv("NVIDIA_API_KEY")
+
+    url = "https://integrate.api.nvidia.com/v1/chat/completions"
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
     }
-    r = requests.post(CHAT_URL, json=payload)
-    return r.json()["choices"][0]["message"]["content"]
+
+    # 🔥 Combine query + context properly
+    prompt = f"""
+Answer the question based only on the context below.
+
+Context:
+{context}
+
+Question:
+{query}
+"""
+
+    payload = {
+        "model": "meta/llama3-8b-instruct",
+        "messages": [
+            {"role": "system", "content": "You are a helpful AI assistant."},
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.7,
+        "max_tokens": 512
+    }
+
+    response = requests.post(url, headers=headers, json=payload)
+    data = response.json()
+
+    if "choices" in data:
+        return data["choices"][0]["message"]["content"]
+    else:
+        return f"Error: {data}"
+
 
 def get_images(chunks):
     imgs = []
@@ -259,58 +303,75 @@ if "messages" not in st.session_state:
 
 # ─── UI ─────────────────────────────────────────────────
 
-if not st.session_state.messages:
-    st.markdown("## 🧠 Ask anything about Psychology")
+tab1, tab2 = st.tabs(["🔍 AI Search", "🧠 Mind Map"])
 
-for msg in st.session_state.messages:
+with tab1:
+    if not st.session_state.messages:
+        st.markdown("## 🧠 Ask anything about Psychology")
 
-    if msg["role"] == "user":
-        safe_q = html.escape(msg["content"])
-        st.markdown(f"<div class='question'>{safe_q}</div>", unsafe_allow_html=True)
+    for idx, msg in enumerate(st.session_state.messages):
 
-    else:
-        safe_answer = html.escape(msg["content"])
-        st.markdown(f"<div class='answer'>{safe_answer}</div>", unsafe_allow_html=True)
+        if msg["role"] == "user":
+            safe_q = html.escape(msg["content"])
+            st.markdown(f"<div class='question'>{safe_q}</div>", unsafe_allow_html=True)
 
-        if msg.get("images"):
-            render_image_row(msg["images"])
+        else:
+            safe_answer = html.escape(msg["content"])
+            st.markdown(f"<div class='answer'>{safe_answer}</div>", unsafe_allow_html=True)
 
-        if msg.get("sources"):
-            st.markdown("### Sources")
+            if msg.get("images"):
+                render_image_row(msg["images"])
 
-            for i, s in enumerate(msg["sources"], 1):
-                preview = html.escape(s.get("clean_text","")[:120]) + "..."
-                pages = ", ".join(map(str, s["page_numbers"]))
+            if msg.get("sources"):
+                with st.expander("Show Sources"):
+                    for i, s in enumerate(msg["sources"], 1):
+                        preview = html.escape(s.get("clean_text","")[:120]) + "..."
+                        pages = ", ".join(map(str, s["page_numbers"]))
 
-                st.markdown(f"""
-                <div class="source-box">
-                    <div class="source-header">
-                        <span class="source-num">{i}</span>
-                        <span class="source-title">{s["section_path"]}</span>
-                    </div>
-                    <div class="source-preview">{preview}</div>
-                    <div class="source-page">📄 Page {pages}</div>
-                </div>
-                """, unsafe_allow_html=True)
+                        st.markdown(f"""
+                        <div class="source-box">
+                            <div class="source-header">
+                                <span class="source-num">{i}</span>
+                                <span class="source-title">{s["section_path"]}</span>
+                            </div>
+                            <div class="source-preview">{preview}</div>
+                            <div class="source-page">📄 Page {pages}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+            
 
-# ─── INPUT ──────────────────────────────────────────────
+    # ─── INPUT ──────────────────────────────────────────────
 
-query = st.chat_input("Ask anything...")
+    query = st.chat_input("Ask anything...")
 
-if query:
-    st.session_state.messages.append({"role":"user","content":query})
+    if query:
+        st.session_state.messages.append({"role":"user","content":query})
 
-    with st.spinner("Thinking..."):
-        chunks = retrieve(query)
-        context = build_context(chunks)
-        answer = call_llm(query, context)
-        images = get_images(chunks)
+        with st.spinner("Thinking..."):
+            chunks = retrieve(query)
+            context = build_context(chunks)
+            answer = call_llm(query, context)
+            images = get_images(chunks)
 
-        st.session_state.messages.append({
-            "role":"assistant",
-            "content":answer,
-            "sources":chunks,
-            "images":images
-        })
+            st.session_state.messages.append({
+                "role":"assistant",
+                "content":answer,
+                "sources":chunks,
+                "images":images
+            })
 
-    st.rerun()
+        st.rerun()
+
+with tab2:
+    st.markdown("### Interactive Learning Visualization")
+    st.info("💡 You can pan, zoom, and collapse branches of the mind map to explore the textbook structure.")
+    
+    if st.button("Refresh Mind Map"):
+        st.session_state.hierarchy_paths = fetch_hierarchy(COLLECTION_NAME)
+        st.rerun()
+
+    if "hierarchy_paths" not in st.session_state:
+        with st.spinner("Building mind map..."):
+            st.session_state.hierarchy_paths = fetch_hierarchy(COLLECTION_NAME)
+            
+    render_mindmap(st.session_state.hierarchy_paths)
