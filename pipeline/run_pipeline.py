@@ -4,7 +4,7 @@ run_pipeline.py
 End-to-end pipeline runner.
 
 Usage:
-    python run_pipeline.py --pdf Psychology2e_WEB.pdf
+    python run_pipeline.py --pdf Psychology2e_WEB-1-100.pdf
     python run_pipeline.py --pdf Psychology2e_WEB_compressed.pdf
 """
 

@@ -1,17 +1,25 @@
 from dotenv import load_dotenv
 load_dotenv()  # load .env into os.environ before anything else
 
-
 import json
 import re
 import tiktoken
+import os
 
-MERGED_PATH   = "../output/psychology2e_merged.json"
-OUTPUT_PATH   = "../output/psychology2e_chunks.json"
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+MERGED_PATH   = os.path.join(BASE_DIR, "output", "psychology2e_merged.json")
+OUTPUT_PATH   = os.path.join(BASE_DIR, "output", "psychology2e_chunks.json")
 TOKEN_LIMIT   = 400
 ENCODING_NAME = "cl100k_base"
 
 enc = tiktoken.get_encoding(ENCODING_NAME)
+
+# ── Sections to skip entirely ─────────────────────────────────────────────────
+SKIP_SECTION_PREFIXES = ("Preamble",)
+
+def should_skip_section(section_path: str) -> bool:
+    return any(section_path.startswith(prefix) for prefix in SKIP_SECTION_PREFIXES)
 
 def count_tokens(text: str) -> int:
     return len(enc.encode(text))
@@ -55,15 +63,11 @@ def inject_image_descriptions(text: str, image_refs: list, img_desc_lookup: dict
         text = text + "\n" + "\n".join(additions)
     return text
 
-# ── FIX: has_image_context helper ────────────────────────────────────────────
 def compute_has_image_context(all_image_refs: list, final_text: str) -> bool:
     """
     Returns True if:
       - The chunk has direct image_refs (caption-linked images), OR
       - The chunk text contains an injected [Image Description - ...] block.
-    
-    This catches chunks whose blocks had no caption link but whose text
-    was enriched with an image description via inject_image_descriptions().
     """
     if len(all_image_refs) > 0:
         return True
@@ -79,7 +83,6 @@ def make_chunk(chunk_id, section_path, block_list, img_desc_lookup,
 
     page_numbers = sorted(set(b["page_number"] for b in block_list))
 
-    # Collect deduplicated, sorted image refs
     seen           = set()
     all_image_refs = []
     for b in block_list:
@@ -89,18 +92,15 @@ def make_chunk(chunk_id, section_path, block_list, img_desc_lookup,
                 all_image_refs.append(ref)
     all_image_refs.sort()
 
-    # Inject image descriptions before token counting
     final_text  = inject_image_descriptions(clean_text, all_image_refs, img_desc_lookup)
     token_count = count_tokens(final_text)
 
-    # block_id naming
     raw_block_ids = [b["block_id"] for b in block_list]
     if split_from_block and sub_index is not None:
         block_ids = [f"{bid}_s{sub_index}" for bid in raw_block_ids]
     else:
         block_ids = raw_block_ids
 
-    # ── FIX: use compute_has_image_context instead of bare len() check ────────
     has_img_ctx = compute_has_image_context(all_image_refs, final_text)
 
     return {
@@ -110,10 +110,65 @@ def make_chunk(chunk_id, section_path, block_list, img_desc_lookup,
         "page_numbers":      page_numbers,
         "token_count":       token_count,
         "image_refs":        all_image_refs,
-        "has_image_context": has_img_ctx,   # FIXED
+        "has_image_context": has_img_ctx,
         "block_ids":         block_ids,
         "split_from_block":  split_from_block,
     }
+
+# ── Sentence splitter for oversized single-block chunks ───────────────────────
+def sentence_split_chunk(chunk: dict, img_desc_lookup: dict) -> list:
+    """
+    Splits an oversized chunk by sentences, enforcing TOKEN_LIMIT per sub-chunk.
+    Returns a list of sub-chunk dicts (chunk_id = -1, reassigned later).
+    """
+    raw_text = chunk["text"]
+    orig_bid = chunk["block_ids"][0]
+
+    parts     = raw_text.split(". ")
+    sentences = [p + ("." if i < len(parts) - 1 else "") for i, p in enumerate(parts)]
+
+    sub_texts       = []
+    current_sub     = []
+    current_sub_tok = 0
+
+    for sent in sentences:
+        sent_tokens = count_tokens(sent)
+        if current_sub and current_sub_tok + sent_tokens + 1 > TOKEN_LIMIT:
+            sub_texts.append(" ".join(current_sub))
+            current_sub     = [sent]
+            current_sub_tok = sent_tokens
+        else:
+            current_sub.append(sent)
+            current_sub_tok += sent_tokens + (1 if current_sub else 0)
+    if current_sub:
+        sub_texts.append(" ".join(current_sub))
+
+    result = []
+    for s_idx, sub_text in enumerate(sub_texts):
+        sub_text = strip_noise_lines(sub_text.strip())
+
+        # Inject image descriptions only on first sub-chunk
+        if s_idx == 0:
+            sub_text = inject_image_descriptions(
+                sub_text, chunk["image_refs"], img_desc_lookup
+            )
+
+        token_count = count_tokens(sub_text)
+        has_img_ctx = compute_has_image_context(chunk["image_refs"], sub_text)
+
+        result.append({
+            "chunk_id":          -1,
+            "section_path":      chunk["section_path"],
+            "text":              sub_text,
+            "page_numbers":      chunk["page_numbers"],
+            "token_count":       token_count,
+            "image_refs":        chunk["image_refs"],
+            "has_image_context": has_img_ctx,
+            "block_ids":         [f"{orig_bid}_s{s_idx}"],
+            "split_from_block":  True,
+        })
+
+    return result
 
 
 def main():
@@ -146,7 +201,12 @@ def main():
         if not text or not text.strip():
             continue
 
-        section      = block.get("section_path", "")
+        section = block.get("section_path", "")
+
+        # ── FIX: skip preamble and non-academic sections entirely ─────────────
+        if should_skip_section(section):
+            continue
+
         block_tokens = count_tokens(text)
 
         if section != current_section:
@@ -176,60 +236,22 @@ def main():
 
     # ── Post-processing: sentence-split oversized single-block chunks ─────────
     processed = []
+    oversized_count = 0
+
     for chunk in chunks:
         if chunk["token_count"] > TOKEN_LIMIT and len(chunk["block_ids"]) == 1:
-            raw_text = chunk["text"]
-            orig_bid = chunk["block_ids"][0]
-
-            parts     = raw_text.split(". ")
-            sentences = [p + ("." if i < len(parts) - 1 else "") for i, p in enumerate(parts)]
-
-            sub_texts       = []
-            current_sub     = []
-            current_sub_tok = 0
-            for sent in sentences:
-                sent_tokens = count_tokens(sent)
-                if current_sub and current_sub_tok + sent_tokens + 1 > TOKEN_LIMIT:
-                    sub_texts.append(" ".join(current_sub))
-                    current_sub     = [sent]
-                    current_sub_tok = sent_tokens
-                else:
-                    current_sub.append(sent)
-                    current_sub_tok += sent_tokens + (1 if current_sub else 0)
-            if current_sub:
-                sub_texts.append(" ".join(current_sub))
-
-            for s_idx, sub_text in enumerate(sub_texts):
-                sub_text = sub_text.strip()
-                sub_text = strip_noise_lines(sub_text)
-                # Inject image descriptions only on first sub-chunk
-                if s_idx == 0:
-                    sub_text = inject_image_descriptions(
-                        sub_text, chunk["image_refs"], img_desc_lookup
-                    )
-                token_count = count_tokens(sub_text)
-
-                # ── FIX: apply compute_has_image_context on sub-chunks too ───
-                has_img_ctx = compute_has_image_context(chunk["image_refs"], sub_text)
-
-                processed.append({
-                    "chunk_id":          -1,
-                    "section_path":      chunk["section_path"],
-                    "text":              sub_text,
-                    "page_numbers":      chunk["page_numbers"],
-                    "token_count":       token_count,
-                    "image_refs":        chunk["image_refs"],
-                    "has_image_context": has_img_ctx,   # FIXED
-                    "block_ids":         [f"{orig_bid}_s{s_idx}"],
-                    "split_from_block":  True,
-                })
+            oversized_count += 1
+            sub_chunks = sentence_split_chunk(chunk, img_desc_lookup)
+            processed.extend(sub_chunks)
         else:
             processed.append(chunk)
 
-    # Filter noise chunks (< 20 tokens)
+    # ── Filter noise chunks (< 20 tokens) ────────────────────────────────────
+    before_filter = len(processed)
     processed = [c for c in processed if c["token_count"] >= 20]
+    filtered_count = before_filter - len(processed)
 
-    # Re-assign sequential chunk_ids
+    # ── Re-assign sequential chunk_ids ───────────────────────────────────────
     for i, c in enumerate(processed):
         c["chunk_id"] = i
     chunks = processed
@@ -264,19 +286,24 @@ def main():
     with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
         json.dump(output, f, indent=2, ensure_ascii=False)
 
+    # ── Print summary ─────────────────────────────────────────────────────────
     print(f"Total chunks produced     : {total_chunks}")
     print(f"Total tokens across all   : {total_tokens}")
     print(f"Average tokens per chunk  : {average_tokens}")
     print(f"Min tokens in a chunk     : {min_tokens}")
     print(f"Max tokens in a chunk     : {max_tokens}")
     print(f"Chunks with image context : {chunks_with_img_ctx}")
+    print(f"Oversized chunks re-split : {oversized_count}")
+    print(f"Noise chunks filtered out : {filtered_count}")
+    print(f"Preamble sections skipped : yes (all Preamble blocks excluded)")
+
     print("\nChunks per section:")
     for sp, count in section_chunk_counts.items():
         print(f"  {sp:<60}: {count}")
 
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("VERIFICATION")
-    print("="*70)
+    print("=" * 70)
 
     if len(chunks) > 32:
         c32 = chunks[32]
@@ -292,6 +319,15 @@ def main():
         print(c30['text'])
     else:
         print(f"\n[Chunk 30 does not exist — only {len(chunks)} chunks total]")
+
+    # ── Oversized chunk audit (should all be <= TOKEN_LIMIT after split) ───────
+    still_oversized = [c for c in chunks if c["token_count"] > TOKEN_LIMIT and not c["has_image_context"]]
+    if still_oversized:
+        print(f"\n[WARNING] {len(still_oversized)} chunks still exceed {TOKEN_LIMIT} tokens after splitting:")
+        for c in still_oversized:
+            print(f"  chunk_id={c['chunk_id']}  tokens={c['token_count']}  section={c['section_path']}")
+    else:
+        print(f"\n[OK] All chunks are within the {TOKEN_LIMIT}-token limit.")
 
 
 if __name__ == "__main__":

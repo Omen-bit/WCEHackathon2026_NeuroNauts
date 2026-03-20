@@ -259,6 +259,12 @@ def process_page_with_docling(doc, page_num, tmp_dir):
     """
     tmp_path = os.path.join(tmp_dir, f"tmp_page_{page_num:03d}.pdf")
 
+    if os.path.exists(tmp_path):
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+
     single = fitz.open()
     single.insert_pdf(doc, from_page=page_num - 1, to_page=page_num - 1)
     single.save(tmp_path)
@@ -301,7 +307,7 @@ def main():
     tmp_dir = 'tmp_pages'
     os.makedirs(tmp_dir, exist_ok=True)
 
-    pdf_path     = os.environ.get('PIPELINE_PDF_PATH', '../data/Psychology2e_WEB.pdf')
+    pdf_path     = os.environ.get('PIPELINE_PDF_PATH', '../data/Psychology2e_WEB-1-100.pdf')
     groq_api_key = os.environ.get("GROQ_API_KEY")
 
     if not groq_api_key:

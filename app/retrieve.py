@@ -10,16 +10,29 @@ from pathlib import Path
 
 load_dotenv()
 
-# ── Robust pathing — works from any working directory ─────────────────────────
+# ── Robust pathing ─────────────────────────────────────────────────────────────
 _APP_DIR         = Path(__file__).parent.absolute()
 _PROJECT_ROOT    = _APP_DIR.parent
 _BM25_INDEX_PATH = _PROJECT_ROOT / "output" / "bm25_index.pkl"
 
-# ── Lazy-loaded globals ───────────────────────────────────────────────────────
+# ── Lazy-loaded globals ────────────────────────────────────────────────────────
 _milvus_collection = None
 _bm25_data         = None
 _lm_studio_url     = os.environ.get("LM_STUDIO_URL",   "http://localhost:1234/v1/embeddings")
 _lm_studio_model   = os.environ.get("LM_STUDIO_MODEL", "nomic-ai/nomic-embed-text-v1.5-GGUF")
+
+# ── Relevance threshold ────────────────────────────────────────────────────────
+# Chunks with hybrid_score below this are dropped from results.
+# Prevents weakly-matched chunks (e.g. Introduction/Figure captions) from
+# appearing in the top-K when they are not genuinely relevant.
+RELEVANCE_THRESHOLD = 0.25
+
+# ── Image description stripper (mirrors embed_and_store.py) ───────────────────
+IMAGE_DESC_RE = re.compile(r'\[Image Description - [^\]]+\]:.*?(?=\[Image Description -|\Z)', re.DOTALL)
+
+def strip_image_descriptions(text: str) -> str:
+    """Remove [Image Description - ...] blocks. Used before embedding the query."""
+    return IMAGE_DESC_RE.sub('', text).strip()
 
 
 def tokenize(text: str) -> list:
@@ -51,6 +64,7 @@ def _get_bm25_data():
 
 
 def embed_query(query: str) -> list:
+    """Embed the query using clean text only (no image description contamination)."""
     payload = {
         "model": _lm_studio_model,
         "input": [query],
@@ -75,12 +89,20 @@ def retrieve(query: str, top_k: int = 5) -> list:
     """
     Stage 5 — Hybrid Retrieval.
     Combines Milvus dense (COSINE HNSW) + BM25 sparse search.
-    Fuses scores as: hybrid = 0.6 * dense_norm + 0.4 * bm25_norm
+    Fusion: hybrid = 0.6 * dense_norm + 0.4 * bm25_norm
+
+    Key fixes vs original:
+      - Query is embedded as clean text (no image desc pollution)
+      - Milvus returns both clean_text and full_text fields
+      - full_text (with image descriptions) is passed to the LLM context
+      - clean_text is what BM25 also indexes — keeps scoring consistent
+      - Chunks below RELEVANCE_THRESHOLD are filtered out before returning
+      - Each result clearly separates text_for_display vs text_for_llm
 
     Returns top_k results sorted by hybrid_score descending.
     """
 
-    # 1. Embed query
+    # 1. Embed query — clean text only
     query_vector = embed_query(query)
 
     # 2. Dense search — fetch top_k * 2 candidates
@@ -93,7 +115,8 @@ def retrieve(query: str, top_k: int = 5) -> list:
         limit=top_k * 2,
         output_fields=[
             "chunk_id", "section_path", "page_numbers",
-            "text", "has_image_context", "image_refs"
+            "clean_text", "full_text",           # ── FIX: fetch both fields
+            "has_image_context", "image_refs",
         ],
     )
 
@@ -104,7 +127,8 @@ def retrieve(query: str, top_k: int = 5) -> list:
             "chunk_id":          cid,
             "section_path":      hit.entity.get("section_path"),
             "page_numbers":      json.loads(hit.entity.get("page_numbers", "[]")),
-            "text":              hit.entity.get("text"),
+            "clean_text":        hit.entity.get("clean_text", ""),   # for display / BM25
+            "full_text":         hit.entity.get("full_text",  ""),   # for LLM context
             "has_image_context": hit.entity.get("has_image_context"),
             "image_refs":        json.loads(hit.entity.get("image_refs", "[]")),
             "dense_score_raw":   float(hit.score),
@@ -132,19 +156,15 @@ def retrieve(query: str, top_k: int = 5) -> list:
             "section_path":      meta["section_path"],
             "page_numbers":      meta["page_numbers"] if isinstance(meta["page_numbers"], list)
                                  else json.loads(meta["page_numbers"]),
-            "text":              meta["text"],
+            "clean_text":        meta.get("clean_text", meta.get("text", "")),
+            "full_text":         meta.get("full_text",  meta.get("text", "")),
             "has_image_context": meta["has_image_context"],
             "image_refs":        meta["image_refs"] if isinstance(meta["image_refs"], list)
                                  else json.loads(meta.get("image_refs", "[]")),
             "bm25_score_raw":    float(score),
         }
 
-    # 4. Fusion — build unified candidate pool
-    # ── FIX: sort the union set so pool order is deterministic ────────────────
-    # Using an unordered set meant pool[], dense_score_list[], bm25_score_list[]
-    # were built from the same iterable in one loop, which is technically safe,
-    # but non-deterministic across Python runs. Sorting by chunk_id makes the
-    # fusion result identical every time for the same query.
+    # 4. Fusion — deterministic pool sorted by chunk_id
     all_chunk_ids = sorted(
         set(dense_candidates.keys()) | set(bm25_candidates.keys())
     )
@@ -166,7 +186,7 @@ def retrieve(query: str, top_k: int = 5) -> list:
     dense_norm = normalize_scores(dense_score_list)
     bm25_norm  = normalize_scores(bm25_score_list)
 
-    # 6. Compute hybrid scores and build final list
+    # 6. Compute hybrid scores
     final_results = []
     for i, (cid, meta) in enumerate(pool):
         dn           = dense_norm[i]
@@ -177,7 +197,13 @@ def retrieve(query: str, top_k: int = 5) -> list:
             "chunk_id":          int(meta["chunk_id"]),
             "section_path":      meta["section_path"],
             "page_numbers":      meta["page_numbers"],
-            "text":              meta["text"],
+
+            # ── FIX: two separate text fields ─────────────────────────────────
+            # clean_text → show in Sources panel / snippet previews
+            # full_text  → pass to LLM as context (includes image descriptions)
+            "clean_text":        meta.get("clean_text", ""),
+            "full_text":         meta.get("full_text",  ""),
+
             "has_image_context": meta["has_image_context"],
             "image_refs":        meta["image_refs"],
             "dense_score":       round(float(dn),           4),
@@ -186,11 +212,20 @@ def retrieve(query: str, top_k: int = 5) -> list:
         })
 
     final_results.sort(key=lambda x: x["hybrid_score"], reverse=True)
-    return final_results[:top_k]
+
+    # 7. ── FIX: apply relevance threshold ─────────────────────────────────────
+    # Filters out weakly-matched chunks (e.g. Introduction figure captions,
+    # preamble leftovers) that pollute the top-K with irrelevant content.
+    filtered = [r for r in final_results if r["hybrid_score"] >= RELEVANCE_THRESHOLD]
+
+    # If threshold removes everything, fall back to top result only
+    if not filtered:
+        filtered = final_results[:1]
+
+    return filtered[:top_k]
 
 
 # ── CLI test ──────────────────────────────────────────────────────────────────
-
 if __name__ == "__main__":
     test_query = "What is classical conditioning?"
     if len(sys.argv) > 1:
@@ -201,10 +236,14 @@ if __name__ == "__main__":
         results = retrieve(test_query, top_k=5)
         for i, res in enumerate(results, 1):
             print(f"Result {i} | Hybrid: {res['hybrid_score']} | Dense: {res['dense_score']} | BM25: {res['bm25_score']}")
-            print(f"  Path  : {res['section_path']}")
-            print(f"  Pages : {res['page_numbers']}")
-            print(f"  ImgCtx: {res['has_image_context']}  |  ImgRefs: {res['image_refs']}")
-            snippet = res["text"].replace("\n", " ")[:120]
-            print(f"  Text  : {snippet}...\n")
+            print(f"  Section : {res['section_path']}")
+            print(f"  Pages   : {res['page_numbers']}")
+            print(f"  ImgCtx  : {res['has_image_context']}  |  ImgRefs: {res['image_refs']}")
+            snippet = res["clean_text"].replace("\n", " ")[:120]
+            print(f"  Preview : {snippet}...")
+            if res["has_image_context"]:
+                full_snippet = res["full_text"].replace("\n", " ")[len(res["clean_text"]):].strip()[:120]
+                print(f"  ImgDesc : {full_snippet}...")
+            print()
     except Exception as e:
         print(f"Error during retrieval: {e}")

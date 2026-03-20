@@ -79,7 +79,7 @@ def generate_markdown(blocks, images_dict):
 def main():
     # Discover the PDF filename and page range dynamically so the script works
     # regardless of which PDF the pipeline was invoked with.
-    pdf_path   = os.environ.get('PIPELINE_PDF_PATH', '../data/Psychology2e_WEB.pdf')
+    pdf_path   = os.environ.get('PIPELINE_PDF_PATH', '../data/Psychology2e_WEB-1-100.pdf')
     pdf_name   = os.path.basename(pdf_path)
 
     # Determine the page range from the files that ingest.py actually wrote.

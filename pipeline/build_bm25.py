@@ -4,6 +4,11 @@ import re
 import pickle
 from rank_bm25 import BM25Okapi
 
+# -- Path discovery -------------------------------------------------------------
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CHUNKS_PATH = os.path.join(BASE_DIR, "output", "psychology2e_chunks.json")
+INDEX_OUT   = os.path.join(BASE_DIR, "output", "bm25_index.pkl")
+
 def tokenize(text: str) -> list[str]:
     """
     Tokenize the text by lowercasing, stripping punctuation, and splitting on whitespace.
@@ -14,12 +19,11 @@ def tokenize(text: str) -> list[str]:
     return text.split()
 
 def build_bm25_index():
-    chunks_file = "../output/psychology2e_chunks.json"
-    if not os.path.exists(chunks_file):
-        print(f"ERROR: Chunks file {chunks_file} not found.")
+    if not os.path.exists(CHUNKS_PATH):
+        print(f"ERROR: Chunks file {CHUNKS_PATH} not found.")
         return
 
-    with open(chunks_file, 'r', encoding='utf-8') as f:
+    with open(CHUNKS_PATH, 'r', encoding='utf-8') as f:
         data = json.load(f)
     
     chunks = data['chunks']
@@ -47,20 +51,15 @@ def build_bm25_index():
     bm25 = BM25Okapi(tokenized_corpus)
 
     # Save both objects in a single pickle file
-    output_pkl = "../output/bm25_index.pkl"
-    # Ensure output directory exists
-    os.makedirs(os.path.dirname(output_pkl), exist_ok=True)
-    
     bundle = {
         "bm25": bm25,
         "lookup": lookup
     }
-    
-    with open(output_pkl, 'wb') as f:
+    with open(INDEX_OUT, 'wb') as f:
         pickle.dump(bundle, f)
     
     print(f"BM25 index built over {total_chunks} documents")
-    print(f"Saved to {output_pkl}")
+    print(f"Saved to {INDEX_OUT}")
 
     # Test Query
     test_query = "What is psychology?"

@@ -3,6 +3,7 @@ import json
 import base64
 import requests
 import streamlit as st
+import html
 from pathlib import Path
 from dotenv import load_dotenv
 from pymilvus import connections, Collection
@@ -29,8 +30,6 @@ IMAGES_DIR = PROJECT_ROOT / "extracted_images"
 TOP_K = 5
 MAX_CONTEXT_CHARS = 4000
 
-# ─── PAGE CONFIG ────────────────────────────────────────
-
 st.set_page_config(layout="wide", page_title="AI Search")
 
 # ─── SIDEBAR ────────────────────────────────────────────
@@ -41,85 +40,136 @@ with st.sidebar:
         st.session_state.messages = []
         st.rerun()
 
-# ─── CSS (CRITICAL FIX FOR IMAGE ROW) ───────────────────
+# ─── CSS + JS ───────────────────────────────────────────
 
 st.markdown("""
 <style>
-
-/* Layout */
 .block-container {
-    max-width: 1200px;
+    max-width: 1100px;
     margin: auto;
 }
 
 /* Question */
 .question {
-    font-size: 2.2rem;
-    font-weight: 800;
-    margin-bottom: 1rem;
+    font-size: 1.9rem;
+    font-weight: 700;
+    margin: 1.5rem 0 1rem 0;
+    border-bottom: 2px solid #f3f4f6;
+    padding-bottom: 0.75rem;
 }
 
 /* Answer */
 .answer {
     font-size: 1.05rem;
     line-height: 1.8;
-    color: #1f2937;
 }
 
-/* IMAGE ROW (FORCED SINGLE LINE 🔥) */
-.image-row {
+/* Image Row */
+.img-row {
     display: flex;
-    flex-wrap: nowrap;   /* IMPORTANT */
     overflow-x: auto;
     gap: 12px;
-    padding: 10px 0 20px 0;
+    margin: 16px 0 24px 0;
 }
 
-.image-card {
-    min-width: 220px;
-    max-width: 220px;
-    height: 150px;
-    flex-shrink: 0;
+.img-card {
+    flex: 0 0 200px;
+    height: 130px;
     border-radius: 12px;
     overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.2s ease;
 }
 
-.image-card img {
+.img-card:hover {
+    transform: scale(1.05);
+}
+
+.img-card img {
     width: 100%;
     height: 100%;
     object-fit: cover;
 }
 
-/* SOURCES RIGHT PANEL */
+/* Modal */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 99999;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0,0,0,0.9);
+    justify-content: center;
+    align-items: center;
+}
+
+.modal-img {
+    max-width: 90%;
+    max-height: 90%;
+    border-radius: 12px;
+}
+
+.close-btn {
+    position: absolute;
+    top: 20px;
+    right: 30px;
+    font-size: 30px;
+    color: white;
+    cursor: pointer;
+}
+
+/* Sources */
 .source-box {
-    background: #ffffff;
+    background: #f9fafb;
     border: 1px solid #e5e7eb;
     border-radius: 10px;
     padding: 10px;
-    margin-bottom: 10px;
+    margin-bottom: 8px;
+}
+
+.source-header {
+    display: flex;
+    gap: 8px;
+}
+
+.source-num {
+    background: #6366f1;
+    color: white;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.7rem;
 }
 
 .source-title {
     font-weight: 600;
-    font-size: 0.9rem;
+    font-size: 0.82rem;
 }
 
 .source-preview {
     font-size: 0.75rem;
     color: #6b7280;
-    margin-top: 4px;
 }
 
 .source-page {
     font-size: 0.7rem;
     color: #9ca3af;
-    margin-top: 6px;
+}
+</style>
+
+<script>
+function openModal(id) {
+    document.getElementById(id).style.display = "flex";
 }
 
-</style>
+function closeModal(id) {
+    document.getElementById(id).style.display = "none";
+}
+</script>
 """, unsafe_allow_html=True)
 
-# ─── LOAD MILVUS ────────────────────────────────────────
+# ─── MILVUS ─────────────────────────────────────────────
 
 @st.cache_resource
 def load_milvus():
@@ -143,32 +193,34 @@ def retrieve(query):
         anns_field="embedding",
         param={"metric_type": "COSINE", "params": {"ef": 64}},
         limit=TOP_K,
-        output_fields=["text","section_path","page_numbers","image_refs"],
+        output_fields=["clean_text","full_text","section_path","page_numbers","image_refs"],
     )
 
     chunks = []
     for hit in results[0]:
         e = hit.entity
         chunks.append({
-            "text": e.get("text"),
+            "clean_text": e.get("clean_text"),
+            "full_text": e.get("full_text"),
             "section_path": e.get("section_path"),
             "page_numbers": json.loads(e.get("page_numbers","[]")),
             "image_refs": json.loads(e.get("image_refs","[]"))
         })
     return chunks
 
+def build_context(chunks):
+    return "\n\n".join([c["full_text"] for c in chunks])[:MAX_CONTEXT_CHARS]
+
 def call_llm(q, context):
-    r = requests.post(CHAT_URL, json={
+    payload = {
         "model": CHAT_MODEL,
         "messages": [
-            {"role":"system","content":"Answer only from context."},
-            {"role":"user","content":f"{context}\n\nQ:{q}"}
+            {"role":"system","content":"Answer only from context. Do NOT generate HTML."},
+            {"role":"user","content":f"Context:\n{context}\n\nQ: {q}"}
         ]
-    })
+    }
+    r = requests.post(CHAT_URL, json=payload)
     return r.json()["choices"][0]["message"]["content"]
-
-def build_context(chunks):
-    return "\n\n".join([c["text"] for c in chunks])[:MAX_CONTEXT_CHARS]
 
 def get_images(chunks):
     imgs = []
@@ -176,68 +228,70 @@ def get_images(chunks):
         for ref in c["image_refs"]:
             path = IMAGES_DIR / ref
             if path.exists():
-                imgs.append({
-                    "path": str(path),
-                    "section": c["section_path"]
-                })
+                imgs.append({"path": str(path)})
     return imgs
+
+def render_image_row(images):
+    cards = []
+
+    for idx, img in enumerate(images):
+        with open(img["path"], "rb") as f:
+            b64 = base64.b64encode(f.read()).decode()
+
+        cards.append(f"""
+        <div class="img-card" onclick="openModal('modal_{idx}')">
+            <img src="data:image/jpeg;base64,{b64}" />
+        </div>
+
+        <div id="modal_{idx}" class="modal">
+            <span class="close-btn" onclick="closeModal('modal_{idx}')">&times;</span>
+            <img src="data:image/jpeg;base64,{b64}" class="modal-img"/>
+        </div>
+        """)
+
+    html_block = '<div class="img-row">' + "".join(cards) + '</div>'
+    st.markdown(html_block, unsafe_allow_html=True)
 
 # ─── STATE ──────────────────────────────────────────────
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# ─── LAYOUT ─────────────────────────────────────────────
+# ─── UI ─────────────────────────────────────────────────
 
-main_col, right_col = st.columns([3, 1])
-
-# ─── DISPLAY ────────────────────────────────────────────
+if not st.session_state.messages:
+    st.markdown("## 🧠 Ask anything about Psychology")
 
 for msg in st.session_state.messages:
 
     if msg["role"] == "user":
-        with main_col:
-            st.markdown(f"<div class='question'>{msg['content']}</div>", unsafe_allow_html=True)
+        safe_q = html.escape(msg["content"])
+        st.markdown(f"<div class='question'>{safe_q}</div>", unsafe_allow_html=True)
 
     else:
-        with main_col:
+        safe_answer = html.escape(msg["content"])
+        st.markdown(f"<div class='answer'>{safe_answer}</div>", unsafe_allow_html=True)
 
-            # 🔥 FIXED IMAGE ROW
-            if msg.get("images"):
-                st.markdown('<div class="image-row">', unsafe_allow_html=True)
+        if msg.get("images"):
+            render_image_row(msg["images"])
 
-                for img in msg["images"]:
-                    with open(img["path"], "rb") as f:
-                        b64 = base64.b64encode(f.read()).decode()
+        if msg.get("sources"):
+            st.markdown("### Sources")
 
-                    st.markdown(f"""
-                    <div class="image-card">
-                        <img src="data:image/png;base64,{b64}">
+            for i, s in enumerate(msg["sources"], 1):
+                preview = html.escape(s.get("clean_text","")[:120]) + "..."
+                pages = ", ".join(map(str, s["page_numbers"]))
+
+                st.markdown(f"""
+                <div class="source-box">
+                    <div class="source-header">
+                        <span class="source-num">{i}</span>
+                        <span class="source-title">{s["section_path"]}</span>
                     </div>
-                    """, unsafe_allow_html=True)
-
-                st.markdown('</div>', unsafe_allow_html=True)
-
-            # Answer
-            st.markdown(f"<div class='answer'>{msg['content']}</div>", unsafe_allow_html=True)
-
-        # RIGHT PANEL (WITH PAGE NUMBER ✅)
-        with right_col:
-            if msg.get("sources"):
-                st.markdown("### Sources")
-
-                for i, s in enumerate(msg["sources"], 1):
-                    title = s["section_path"].split(">")[-1]
-                    preview = s["text"][:80] + "..."
-                    page = s["page_numbers"][0] if s["page_numbers"] else "?"
-
-                    st.markdown(f"""
-                    <div class="source-box">
-                        <div class="source-title">[{i}] {title}</div>
-                        <div class="source-preview">{preview}</div>
-                        <div class="source-page">Page {page}</div>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    <div class="source-preview">{preview}</div>
+                    <div class="source-page">📄 Page {pages}</div>
+                </div>
+                """, unsafe_allow_html=True)
 
 # ─── INPUT ──────────────────────────────────────────────
 
