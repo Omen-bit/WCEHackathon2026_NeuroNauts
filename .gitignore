@@ -2,7 +2,4 @@
 .venv/
 __pycache__/
 *.pyc
-extracted_images/
-page_outputs/
-output/
-*.pdf
+
