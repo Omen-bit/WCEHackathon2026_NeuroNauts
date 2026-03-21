@@ -33,8 +33,6 @@ if str(_THIS_DIR) not in sys.path:
 from retrieve import retrieve
 
 
-# ─── Config ──────────────────────────────────────────────────────────────────
-
 LM_STUDIO_BASE_URL  = os.getenv("LM_STUDIO_BASE_URL",  "http://localhost:1234")
 LM_STUDIO_CHAT_URL  = f"{LM_STUDIO_BASE_URL}/v1/chat/completions"
 LM_STUDIO_LLM_MODEL = os.getenv("LM_STUDIO_LLM_MODEL", "gemma-3-4b-it-Q4_K_M.gguf")
@@ -151,7 +149,7 @@ def generate(question: str, top_k: int = 5) -> dict:
         if cid in seen_ids:
             continue
         seen_ids.add(cid)
-        text = chunk["text"].strip()
+        text = chunk["full_text"].strip()
         if total_chars + len(text) > MAX_CONTEXT_CHARS:
             remaining = MAX_CONTEXT_CHARS - total_chars
             if remaining > 100:
