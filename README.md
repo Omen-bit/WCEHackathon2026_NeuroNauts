@@ -1,7 +1,7 @@
 # NeuroNauts 🧠🚀
 
 <p align="center">
-  <img src="neuronauts_hero_banner.png" alt="NeuroNauts Hero Banner" width="100%" />
+  <img src="neuronauts_hero_banner.png" alt="NeuroNauts Hero Banner" width="60%" />
 </p>
 
 <p align="center">
