@@ -1,85 +1,167 @@
 # NeuroNauts 🧠🚀
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
-[![Milvus](https://img.shields.io/badge/Milvus-0DAB76?logo=milvus&logoColor=white)](https://milvus.io/)
-[![D3.js](https://img.shields.io/badge/D3.js-F9A03C?logo=d3.js&logoColor=white)](https://d3js.org/)
-[![LM Studio](https://img.shields.io/badge/LM_Studio-Gemma_4B-purple)](#)
-[![Hybrid RAG](https://img.shields.io/badge/Architecture-Hybrid_RAG-orange)](#)
+<p align="center">
+  <img src="neuronauts_hero_banner.png" alt="NeuroNauts Hero Banner" width="100%" />
+</p>
 
-NeuroNauts is an advanced, AI-powered interactive learning companion focused on Psychology. Designed specifically around the **OpenStax Psychology 2e** textbook, this application utilizes an advanced Hybrid Retrieval-Augmented Generation (RAG) architecture to provide accurate, context-aware answers natively from the core material, without hallucinations.
+<p align="center">
+  <b>Advanced AI Learning Companion for Psychology</b> <br/>
+  <i>Engineered for the OpenStax Psychology 2e Textbook</i>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white" />
+  <img src="https://img.shields.io/badge/Streamlit-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white" />
+  <img src="https://img.shields.io/badge/Milvus-0DAB76?style=for-the-badge&logo=milvus&logoColor=white" />
+  <img src="https://img.shields.io/badge/D3.js-F9A03C?style=for-the-badge&logo=d3.js&logoColor=white" />
+  <img src="https://img.shields.io/badge/Gemma_3-purple?style=for-the-badge&logo=google&logoColor=white" />
+  <img src="https://img.shields.io/badge/Hybrid_RAG-orange?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/Section_Aware-blue?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/Local_Offline-green?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/OpenStax-2e-red?style=for-the-badge" />
+</p>
 
 ---
 
-## ✨ Features
+## 📖 Overview
 
-- **Hybrid RAG Semantic Search**: Combines Dense Vector Search (cosine similarity) and Sparse BM25 Keyword Matching via Milvus for high-precision retrieval of paragraphs, images, and pages.
-- **Conversation Aware Context**: Seamlessly handles pronoun-heavy follow up questions (e.g., "what are parts of it?") utilizing memory-enriched AI embeddings.
-- **Local Native LLM Stack**: Completely local and offline inference utilizing LM Studio (Gemma models), effectively cutting down API costs while preserving high-speed outputs.
-- **Interactive Knowledge Graph (D3.js)**: Visualize textbook architectures dynamically! Explore chapter hierarchies, size-weighted nodes based on volume, and instantly jump to topic chats.
-- **Automated Text Validation (Eval Dashboard)**: Evaluates response outputs locally in real-time scoring *faithfulness* and *relevancy* via dense embeddings avoiding Ground Truth demands. 
-- **Image Referencing in Chat**: Intelligently grabs figures and charts associated with sections to display natively as Lightbox modals within the chat timeline.
+**NeuroNauts** is a state-of-the-art interactive learning platform designed to revolutionize how students interact with complex academic material. By leveraging a **Hybrid Retrieval-Augmented Generation (RAG)** architecture, it transforms the *OpenStax Psychology 2e* textbook into a dynamic, conversational knowledge base.
 
-## 🛠️ Key Technologies
+Unlike standard LLMs, NeuroNauts provides **hallucination-free** answers by grounding every response in specific textbook segments, complete with page citations and relevant scientific illustrations.
 
-- **Frontend & UI**: [Streamlit](https://streamlit.io/) + Custom CSS, HTLM5 Dialogs
-- **Vector Database**: [Milvus](https://milvus.io/) (for dense embedding storage and hybrid ranking)
-- **Local Server Engine**: [LM Studio](https://lmstudio.ai/)
-- **Embeddings**: `nomic-embed-text-v1.5-GGUF`
-- **Generative AI Model**: `gemma-3-4b-it-Q4_K_M.gguf`
-- **Data Ingestion Frameworks**: [Docling](https://github.com/DS4SD/docling), [PyMuPDF](https://pymupdf.readthedocs.io/)
-- **Graph Visualization**: [D3.js](https://d3js.org/)
+---
 
-## 🚀 Quick Start & Installation
+## ✨ Key Features
 
-### 1. Prerequisites
-* Python 3.10+
-* [Milvus Standalone](https://milvus.io/docs/install_standalone-docker.md) running locally (`localhost:19530`)
-* LM Studio running on `http://localhost:1234` with developer server active. Ensure you have loaded the specified embedding and chat models.
+| Feature | Description |
+| :--- | :--- |
+| **🔍 Hybrid Semantic Search** | Combines **Dense Vector Search** (Milvus) with **Sparse BM25** keyword matching using **Reciprocal Rank Fusion (RRF)** for surgical precision. |
+| **📂 Section-Aware Chunking** | Intelligent data ingestion that preserves hierarchical metadata. Chunks never bleed across sections/chapters, ensuring perfect context integrity. |
+| **🗺️ Interactive Knowledge Graph** | A dynamic **D3.js-powered visualization** of the textbook's hierarchy, allowing users to explore relationships between psychological concepts. |
+| **🖼️ Intelligent Image Retrieval** | Automatically identifies and displays charts, diagrams, and figures associated with the retrieved context inside a lightbox modal. |
+| **🧠 Context-Aware Memory** | Handles complex follow-up questions (e.g., "what are parts of it?") by intelligently resolving pronouns against conversation history. |
+| **📊 Eval Dashboard** | Built-in evaluation suite that measures **Faithfulness** and **Answer Relevancy** using sentence-level embedding similarity—no ground truth required. |
+| **🔒 100% Local & Private** | Runs entirely offline using **LM Studio** and **Gemma models**, ensuring data privacy and zero API costs. |
 
-### 2. Clone the Repository
-```bash
-git clone https://github.com/YourUsername/WCEHackathon2026_NeuroNauts.git
-cd WCEHackathon2026_NeuroNauts
+---
+
+## 🏗️ Detailed Architecture
+
+NeuroNauts follows a sophisticated three-stage pipeline: **Ingestion**, **Retrieval**, and **Generation**. The system is built for accuracy and traceability.
+
+```mermaid
+graph TD
+    subgraph "1. Intelligent Ingestion & Indexing"
+        A[Psychology 2e PDF] --> B[Docling Parser]
+        B --> C{Metadata Extraction}
+        C -->|Heading Path| D[Section-Aware Chunking]
+        C -->|Page Numbers| D
+        D -->|Token Limit: 400| E[Image Description Injection]
+        E --> F[(Milvus Vector DB)]
+        E --> G[BM25 Sparse Index]
+        B --> H[PyMuPDF Image Extraction]
+        H --> I[Extracted Assets Store]
+    end
+
+    subgraph "2. Hybrid Retrieval Engine"
+        J[User Query] --> K[Query Context Enrichment]
+        K --> L[Dense Search - Milvus]
+        K --> M[Sparse Search - BM25]
+        L & M --> N{RRF Reranking}
+        N --> O[Top-K Segment Selection]
+        O --> P[Image-to-Chunk Mapping]
+    end
+
+    subgraph "3. Contextual Generation & UI"
+        P --> Q[Context Window Packaging]
+        Q --> R[Gemma-3 4B-IT Local LLM]
+        R --> S[Streamlit Interface]
+        I --> S
+        S --> T[Evaluation Dashboard]
+    end
 ```
 
-### 3. Install Dependencies
-```bash
-python -m venv .venv
-# Windows:
-.venv\Scripts\activate
-# Mac/Linux:
-source .venv/bin/activate
+---
 
+## 🚀 Quick Start
+
+### 1. Prerequisites
+- **Python 3.10+**
+- **Milvus Standalone** running on `localhost:19530`
+- **LM Studio** (configured for OpenAI-compatible server on port 1234)
+  - *Recommended Models:* `nomic-embed-text-v1.5-GGUF` & `gemma-3-4b-it-Q4_K_M.gguf`
+
+### 2. Installation
+```bash
+# Clone the repo
+git clone https://github.com/Omen-bit/WCEHackathon2026_NeuroNauts.git
+cd WCEHackathon2026_NeuroNauts
+
+# Setup environment
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+
+# Install dependencies
 pip install -r requirements.txt
 ```
 
-### 4. Application Configuration
-Copy your environment variables and place your models.
-```bash
-# Rename the sample env
-# Or create a .env with:
+### 3. Configuration
+Create a `.env` file in the root directory:
+```env
 LM_STUDIO_BASE_URL="http://localhost:1234"
 LM_STUDIO_MODEL="nomic-ai/nomic-embed-text-v1.5-GGUF"
 LM_STUDIO_LLM_MODEL="gemma-3-4b-it-Q4_K_M.gguf"
 ```
 
-### 5. Launch the Application
-Start up the Streamlit frontend.
+### 4. Running the App
 ```bash
 streamlit run app/app.py
 ```
 
-## 🧠 Application Architecture
+---
 
-1. **Ingestion & Chunking**: PyMuPDF handles image extraction. Docling handles parsing the raw textbook PDF. Content is semantically chunked and merged preserving chapters, pages, headings, and related images.
-2. **Retrieval Module (`pipeline/retrieve.py`)**: Marries standard keyword retrieval (BM25) with vector semantic search (Milvus embeddings) via reciprocal rank fusion (RRF). 
-3. **Generation (`app/generate.py` & `app/app.py`)**: Chunks are assembled and constrained within context budgets and shipped to Gemma via standard OpenAI-compatible requests protocols.
-4. **Evaluation (`pipeline/` and Eval Page)**: Checks responses recursively mapping generated sentence vectors directly against retrieved context vectors measuring cosine thresholds.
+## 📁 Project Structure
 
-## 🤝 Project Submissions
+```text
+NeuroNauts/
+├── app/                    # Streamlit Frontend & UI Components
+│   ├── app.py              # Main Entry Point (Chat Interface)
+│   ├── knowledge_graph.py  # D3.js Visualization Engine
+│   ├── generate.py         # Local LLM Communication Logic
+│   └── retrieve.py         # Hybrid BM25 + Dense Retrieval Rerank
+├── pipeline/               # Data Engineering & Ingestion
+│   ├── ingest.py           # PDF Parsing (Docling + PyMuPDF)
+│   ├── chunk.py            # Section-Aware Semantic Chunking
+│   ├── build_bm25.py       # BM25 Sparse Index Builder
+│   ├── embed_and_store.py  # Milvus Vectorization Logic
+│   └── run_pipeline.py     # End-to-End Ingestion Orchestrator
+├── data/                   # Raw Input Data (Psychology Textbook)
+├── extracted_images/       # Figures & Scientific Diagrams
+├── output/                 # Indices, Mappings & Evaluation JSONs
+└── requirements.txt        # System Dependencies
+```
 
-Developed for **WCE Hackathon 2026**. Designed to radically overhaul textbook traversal and data retention among modern students.
+---
 
---- 
-*Note: Due to the high payload context of large textbooks, a system with at least 16GB of RAM is highly recommended when evaluating local offline models.*
+## 📊 Automated Evaluation
+
+NeuroNauts implements an automated, ground-truth-free evaluation system based on the **RAGAS philosophy**:
+
+1.  **Faithfulness Score:** Ensures the LLM's answer is derived solely from the retrieved context. It breaks the answer into sentences and checks each against the source vectors using a cosine similarity threshold (0.75+).
+2.  **Answer Relevancy:** Measures how directly the response addresses the prompt's intent via semantic alignment.
+
+---
+
+## 🤝 Contributing
+
+This project was built for the **WCE Hackathon 2026** by **Team NeuroNauts**. We follow the MIT License and welcome community feedback.
+
+---
+
+## 📜 License
+
+Distributed under the MIT License. See `LICENSE` for more information.
+
+---
+<p align="center">Made with ❤️ by Team NeuroNauts</p>
+
