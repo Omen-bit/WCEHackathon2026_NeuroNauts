@@ -12,22 +12,23 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white" />
   <img src="https://img.shields.io/badge/Streamlit-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white" />
-  <img src="https://img.shields.io/badge/Milvus-0DAB76?style=for-the-badge&logo=milvus&logoColor=white" />
-  <img src="https://img.shields.io/badge/D3.js-F9A03C?style=for-the-badge&logo=d3.js&logoColor=white" />
-  <img src="https://img.shields.io/badge/Gemma_3-purple?style=for-the-badge&logo=google&logoColor=white" />
-  <img src="https://img.shields.io/badge/Hybrid_RAG-orange?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/Section_Aware-blue?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/Local_Offline-green?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/OpenStax-2e-red?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/Zilliz_Cloud-0DAB76?style=for-the-badge&logo=zilliz&logoColor=white" />
+  <img src="https://img.shields.io/badge/Groq_API-F9A03C?style=for-the-badge&logo=groq&logoColor=white" />
+  <img src="https://img.shields.io/badge/Cloudinary-3448C5?style=for-the-badge&logo=cloudinary&logoColor=white" />
+  <img src="https://img.shields.io/badge/Llama_3.3_70B-purple?style=for-the-badge&logo=meta&logoColor=white" />
+  <img src="https://img.shields.io/badge/Docling-darkgreen?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/PyMuPDF-yellow?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/Sentence--Transformers-blue?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/Cloud_Native-cyan?style=for-the-badge" />
 </p>
 
 ---
 
 ## 📖 Overview
 
-**NeuroNauts** is a state-of-the-art interactive learning platform designed to revolutionize how students interact with complex academic material. By leveraging a **Hybrid Retrieval-Augmented Generation (RAG)** architecture, it transforms the *OpenStax Psychology 2e* textbook into a dynamic, conversational knowledge base.
+**NeuroNauts** is a state-of-the-art interactive learning platform designed to revolutionize how students interact with complex academic material. By leveraging a **Cloud-Native Retrieval-Augmented Generation (RAG)** architecture, it transforms the *OpenStax Psychology 2e* textbook into a dynamic, conversational knowledge base.
 
-Unlike standard LLMs, NeuroNauts provides **hallucination-free** answers by grounding every response in specific textbook segments, complete with page citations and relevant scientific illustrations.
+Unlike standard LLMs which frequently hallucinate or confidently invent incorrect academic facts, NeuroNauts provides **hallucination-free** answers by grounding every single response in highly-specific textbook segments. It rapidly serves high-quality Generation via **Groq**, accurate dense vector search via **Zilliz Cloud**, and seamlessly renders contextual infographics, charts, and scientific illustrations directly via **Cloudinary**.
 
 ---
 
@@ -35,49 +36,44 @@ Unlike standard LLMs, NeuroNauts provides **hallucination-free** answers by grou
 
 | Feature | Description |
 | :--- | :--- |
-| **🔍 Hybrid Semantic Search** | Combines **Dense Vector Search** (Milvus) with **Sparse BM25** keyword matching using **Reciprocal Rank Fusion (RRF)** for surgical precision. |
-| **📂 Section-Aware Chunking** | Intelligent data ingestion that preserves hierarchical metadata. Chunks never bleed across sections/chapters, ensuring perfect context integrity. |
-| **🗺️ Interactive Knowledge Graph** | A dynamic **D3.js-powered visualization** of the textbook's hierarchy, allowing users to explore relationships between psychological concepts. |
-| **🖼️ Intelligent Image Retrieval** | Automatically identifies and displays charts, diagrams, and figures associated with the retrieved context inside a lightbox modal. |
+| **☁️ Cloud-Native Ecosystem** | Built for production performance using **Groq** (Llama-3.3-70b-versatile), **Zilliz Cloud**, and **Cloudinary** CDN image hosting. |
+| **🔍 High-Fidelity Retrieval** | Employs `Nomic-Embed-Text` on Zilliz Cloud with strict relevance thresholds (Cosine Similarity > 0.3) ensuring zero-hallucinations. |
+| **🛡️ Resilient API Architecture** | Wraps all downstream services (Database, CDN, LLM) in robust exception handling logic, rendering premium UI fallback banners for 401 Auth errors, 429 Rate Limits, and 500 Timeouts. |
+| **📂 Section-Aware Chunking** | Intelligent data ingestion via **Docling**. Chunks never bleed across sections/chapters, ensuring perfect context integrity. |
+| **🖼️ Intelligent Image Lightbox** | Using **PyMuPDF**, the agent identifies and securely extracts charts/diagrams, serving them from Cloudinary alongside the LLM's text. |
 | **🧠 Context-Aware Memory** | Handles complex follow-up questions (e.g., "what are parts of it?") by intelligently resolving pronouns against conversation history. |
-| **📊 Eval Dashboard** | Built-in evaluation suite that measures **Faithfulness** and **Answer Relevancy** using sentence-level embedding similarity—no ground truth required. |
-| **🔒 100% Local & Private** | Runs entirely offline using **LM Studio** and **Gemma models**, ensuring data privacy and zero API costs. |
+| **📊 Headless Eval Suite** | Includes `headless_eval.py` to continuously measure **Faithfulness** and **Answer Relevancy** programmatically across the data pipeline. |
 
 ---
 
 ## 🏗️ Detailed Architecture
 
-NeuroNauts follows a sophisticated three-stage pipeline: **Ingestion**, **Retrieval**, and **Generation**. The system is built for accuracy and traceability.
+NeuroNauts evolved from a local-prototyped RAG into a highly-scalable cloud MVP. The system handles **Ingestion**, **Retrieval**, and **Generation** over distributed nodes to ensure millisecond-level inference times.
 
 ```mermaid
 graph TD
-    subgraph "1. Intelligent Ingestion & Indexing"
+    subgraph "1. Engineering & Ingestion Scripts (One-Time Execution)"
         A[Psychology 2e PDF] --> B[Docling Parser]
-        B --> C{Metadata Extraction}
-        C -->|Heading Path| D[Section-Aware Chunking]
-        C -->|Page Numbers| D
-        D -->|Token Limit: 400| E[Image Description Injection]
-        E --> F[(Milvus Vector DB)]
-        E --> G[BM25 Sparse Index]
-        B --> H[PyMuPDF Image Extraction]
-        H --> I[Extracted Assets Store]
+        B --> C[Section-Aware Chunking]
+        C -->|Raw Images via PyMuPDF| D[Upload to Cloudinary CDN]
+        C -->|Text via SentenceTransformers| E[Push to Zilliz Cloud DB]
+        D --> F(image_url_map.json)
+        F --> G[fix_image_refs.py aligner]
     end
 
-    subgraph "2. Hybrid Retrieval Engine"
-        J[User Query] --> K[Query Context Enrichment]
-        K --> L[Dense Search - Milvus]
-        K --> M[Sparse Search - BM25]
-        L & M --> N{RRF Reranking}
-        N --> O[Top-K Segment Selection]
-        O --> P[Image-to-Chunk Mapping]
+    subgraph "2. Cloud-Native Retrieval Engine (App)"
+        H[User Query] --> I[Context Window Management]
+        I --> J[Zilliz Dense Vector Search]
+        J --> K[Top-K Segment Extraction]
+        K --> L[Extract Cloudinary Image URLs]
     end
 
     subgraph "3. Contextual Generation & UI"
-        P --> Q[Context Window Packaging]
-        Q --> R[Gemma-3 4B-IT Local LLM]
-        R --> S[Streamlit Interface]
-        I --> S
-        S --> T[Evaluation Dashboard]
+        K --> M[Context Packaging]
+        M --> N[Groq API: Llama-3.3-70b]
+        N --> O[Streamlit UI Chatbot]
+        L --> O
+        O --> P[Frontend Error Sentinel Catching]
     end
 ```
 
@@ -87,9 +83,10 @@ graph TD
 
 ### 1. Prerequisites
 - **Python 3.10+**
-- **Milvus Standalone** running on `localhost:19530`
-- **LM Studio** (configured for OpenAI-compatible server on port 1234)
-  - *Recommended Models:* `nomic-embed-text-v1.5-GGUF` & `gemma-3-4b-it-Q4_K_M.gguf`
+- Keys for the following infrastructure:
+  - **Groq API** (For lightning-fast LLM generation)
+  - **Zilliz Cloud** (For Serverless Vector Search)
+  - **Cloudinary** (For Cloud Image CDN hosting)
 
 ### 2. Installation
 ```bash
@@ -97,20 +94,30 @@ graph TD
 git clone https://github.com/Omen-bit/WCEHackathon2026_NeuroNauts.git
 cd WCEHackathon2026_NeuroNauts
 
-# Setup environment
+# Create and activate environment
 python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
+# Windows: .venv\Scripts\activate
+# Mac/Linux: source .venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
 ```
 
 ### 3. Configuration
-Create a `.env` file in the root directory:
+Create a `.env` file in the root directory and populate it with your cloud credentials:
 ```env
-LM_STUDIO_BASE_URL="http://localhost:1234"
-LM_STUDIO_MODEL="nomic-ai/nomic-embed-text-v1.5-GGUF"
-LM_STUDIO_LLM_MODEL="gemma-3-4b-it-Q4_K_M.gguf"
+# --- GROQ (LLM Gen) ---
+GROQ_API_KEY="your-groq-key"
+GROQ_MODEL="llama-3.3-70b-versatile"
+
+# --- CLOUDINARY (Images) ---
+CLOUDINARY_CLOUD_NAME="your-cloud-name"
+CLOUDINARY_API_KEY="your-key"
+CLOUDINARY_API_SECRET="your-secret"
+
+# --- ZILLIZ (Vector DB) ---
+ZILLIZ_URI="https://your-zilliz-cluster.cloud.zilliz.com"
+ZILLIZ_TOKEN="your-zilliz-token"
 ```
 
 ### 4. Running the App
@@ -120,35 +127,49 @@ streamlit run app/app.py
 
 ---
 
-## 📁 Project Structure
+## 📚 Use Your Own Textbook!
 
-```text
-NeuroNauts/
-├── app/                    # Streamlit Frontend & UI Components
-│   ├── app.py              # Main Entry Point (Chat Interface)
-│   ├── knowledge_graph.py  # D3.js Visualization Engine
-│   ├── generate.py         # Local LLM Communication Logic
-│   └── retrieve.py         # Hybrid BM25 + Dense Retrieval Rerank
-├── pipeline/               # Data Engineering & Ingestion
-│   ├── ingest.py           # PDF Parsing (Docling + PyMuPDF)
-│   ├── chunk.py            # Section-Aware Semantic Chunking
-│   ├── build_bm25.py       # BM25 Sparse Index Builder
-│   ├── embed_and_store.py  # Milvus Vectorization Logic
-│   └── run_pipeline.py     # End-to-End Ingestion Orchestrator
-├── data/                   # Raw Input Data (Psychology Textbook)
-├── extracted_images/       # Figures & Scientific Diagrams
-├── output/                 # Indices, Mappings & Evaluation JSONs
-└── requirements.txt        # System Dependencies
-```
+Want to use NeuroNauts for a different textbook? It's incredibly easy to adapt our custom engineering pipeline for any PDF.
+
+1. **Add Your Book**: Place your new PDF in the `data/` or root directory.
+2. **Run the Ingestion Pipeline**:
+   ```bash
+   python pipeline/run_pipeline.py path/to/your_textbook.pdf
+   ```
+   *This uses **Docling** to intelligently chunk your book specifically by academic headings, and uses **PyMuPDF** to rip out all the native high-res images to an `extracted_images/` folder.*
+3. **Upload Assets to CDN**:
+   ```bash
+   python scripts/upload_images_to_cloud.py
+   ```
+   *This securely streams your newly extracted textbook images into Cloudinary.*
+4. **Push to Vector DB**:
+   ```bash
+   python scripts/migrate_to_zilliz.py
+   python scripts/fix_image_refs.py
+   ```
+   *This connects the generated cloud URLs to your dense vector DB chunks and pushes everything securely to Zilliz.*
+5. **Start Chatting**: Your app is now an expert on your unique textbook!
 
 ---
 
-## 📊 Automated Evaluation
+## 📁 Project Structure
 
-NeuroNauts implements an automated, ground-truth-free evaluation system based on the **RAGAS philosophy**:
-
-1.  **Faithfulness Score:** Ensures the LLM's answer is derived solely from the retrieved context. It breaks the answer into sentences and checks each against the source vectors using a cosine similarity threshold (0.75+).
-2.  **Answer Relevancy:** Measures how directly the response addresses the prompt's intent via semantic alignment.
+```text
+WCEHackathon2026_NeuroNauts/
+├── app/                        # Streamlit Frontend & Core RAG Logic
+│   ├── app.py                  # Main App, Prompt Engineering & UI Rendering
+│   ├── retrieve.py             # Zilliz Database Connections & Search logic
+│   ├── generate.py             # Groq API Abstraction Layer
+│   └── headless_eval.py        # Automated Headless Evaluation Script
+├── pipeline/                   # Powerful Automated PDF Ingestion Pipeline
+│   └── (Docling Parsers, PyMuPDF extractors, Recursive Chunking)
+├── scripts/                    # Infrastructure Migration & Cleanup Toolkit
+│   ├── migrate_to_zilliz.py    # Uplift script for moving local DB to Zilliz
+│   ├── upload_images_to_cloud.py # Asset migration to Cloudinary
+│   └── fix_image_refs.py       # Cloud DB JSON string serialization rectifier
+├── queries.json                # Standardized testing metrics
+└── requirements.txt            # Modern, cloud-native project dependencies
+```
 
 ---
 
@@ -164,4 +185,3 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 ---
 <p align="center">Made with ❤️ by Team NeuroNauts</p>
-
