@@ -39,16 +39,26 @@ from knowledge_graph import show_knowledge_graph_page
 
 # ─── CONFIG ──────────────────────────────────────────────────────────────────
 
-try:
-    import streamlit as st
-    _groq_key   = st.secrets.get("GROQ_API_KEY", os.environ.get("GROQ_API_KEY", ""))
-    _groq_model = st.secrets.get("GROQ_MODEL", os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile"))
-except Exception:
-    _groq_key   = os.environ.get("GROQ_API_KEY", "")
-    _groq_model = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
 
-GROQ_API_KEY = _groq_key
-GROQ_MODEL   = _groq_model
+def _resolve_groq_key() -> str:
+    """Lazily resolve GROQ_API_KEY from env or Streamlit secrets."""
+    key = os.environ.get("GROQ_API_KEY", "")
+    if key:
+        return key
+    try:
+        key = st.secrets.get("GROQ_API_KEY", "")
+        if key:
+            return key
+    except Exception:
+        pass
+    return ""
+
+def _resolve_groq_model() -> str:
+    try:
+        return st.secrets.get("GROQ_MODEL", os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile"))
+    except Exception:
+        return os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
 
 APP_DIR      = _APP_DIR
 PROJECT_ROOT = _PROJECT_ROOT
@@ -465,9 +475,10 @@ def _is_api_error(e: Exception) -> bool:
 def _get_groq_client() -> "_GroqClient":
     if not _GROQ_AVAILABLE:
         raise RuntimeError("groq package not installed. Run: pip install groq")
-    if not GROQ_API_KEY:
-        raise RuntimeError("GROQ_API_KEY is missing from environment/.env")
-    return _GroqClient(api_key=GROQ_API_KEY)
+    api_key = _resolve_groq_key()
+    if not api_key:
+        raise RuntimeError("GROQ_API_KEY is missing. Add it to Streamlit Cloud Secrets.")
+    return _GroqClient(api_key=api_key)
 
 
 def call_llm(question: str, context: str) -> str:
@@ -504,7 +515,7 @@ def call_llm(question: str, context: str) -> str:
     try:
         client = _get_groq_client()
         completion = client.chat.completions.create(
-            model=GROQ_MODEL,
+            model=_resolve_groq_model(),
             messages=[system] + history,
             temperature=0.2,
             max_tokens=800,
@@ -527,7 +538,7 @@ def call_llm_stateless(question: str, context: str) -> str:
     try:
         client = _get_groq_client()
         completion = client.chat.completions.create(
-            model=GROQ_MODEL,
+            model=_resolve_groq_model(),
             messages=[
                 {"role": "system", "content": (
                     "You are a psychology textbook assistant. "
