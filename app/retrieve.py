@@ -7,7 +7,6 @@ from sentence_transformers import SentenceTransformer
 
 load_dotenv()
 
-# Zilliz Configuration
 ZILLIZ_URI = "https://in03-bc51ec1151acfd9.serverless.aws-eu-central-1.cloud.zilliz.com"
 
 _collection  = None
@@ -15,12 +14,9 @@ _embed_model = None
 
 
 def _get_token():
-    """Resolve ZILLIZ_TOKEN from env or Streamlit secrets."""
-    # 1. Try environment / .env (local dev)
     token = os.getenv("ZILLIZ_TOKEN")
     if token:
         return token
-    # 2. Try Streamlit Cloud secrets
     try:
         import streamlit as st
         token = st.secrets.get("ZILLIZ_TOKEN")
@@ -28,10 +24,7 @@ def _get_token():
             return token
     except Exception:
         pass
-    raise ValueError(
-        "ZILLIZ_TOKEN not found. Add it to Streamlit Cloud Secrets "
-        "or your local .env file."
-    )
+    raise ValueError("ZILLIZ_TOKEN not found in environment or Streamlit secrets.")
 
 
 def _get_milvus_collection():
@@ -51,11 +44,26 @@ def _get_embed_model():
     return _embed_model
 
 
+def _get_field(entity, field, default=None):
+    """Compatible field getter for pymilvus Hit entity across versions."""
+    try:
+        # New pymilvus versions use attribute access
+        val = getattr(entity, field, None)
+        if val is not None:
+            return val
+    except Exception:
+        pass
+    try:
+        # Older versions support .get(field) with single argument
+        val = entity.get(field)
+        if val is not None:
+            return val
+    except Exception:
+        pass
+    return default
+
+
 def retrieve(question: str, top_k: int = 5) -> list:
-    """
-    Retrieve top chunks from Zilliz Cloud using dense vector search.
-    Applies score constraints: all scores < 0.3 are discarded.
-    """
     model = _get_embed_model()
     col   = _get_milvus_collection()
 
@@ -82,7 +90,7 @@ def retrieve(question: str, top_k: int = 5) -> list:
 
         e = hit.entity
 
-        pn_raw = e.get("page_numbers")
+        pn_raw = _get_field(e, "page_numbers", "[]")
         if isinstance(pn_raw, str):
             try:
                 pn = json.loads(pn_raw.replace("'", '"'))
@@ -91,7 +99,7 @@ def retrieve(question: str, top_k: int = 5) -> list:
         else:
             pn = pn_raw if pn_raw else []
 
-        ir_raw = e.get("image_refs")
+        ir_raw = _get_field(e, "image_refs", "[]")
         if isinstance(ir_raw, str):
             try:
                 ir = json.loads(ir_raw.replace("'", '"'))
@@ -101,12 +109,12 @@ def retrieve(question: str, top_k: int = 5) -> list:
             ir = ir_raw if ir_raw else []
 
         results.append({
-            "chunk_id":          e.get("chunk_id"),
-            "section_path":      e.get("section_path"),
+            "chunk_id":          _get_field(e, "chunk_id"),
+            "section_path":      _get_field(e, "section_path"),
             "page_numbers":      pn,
-            "clean_text":        e.get("clean_text", ""),
-            "full_text":         e.get("full_text", ""),
-            "has_image_context": e.get("has_image_context", False),
+            "clean_text":        _get_field(e, "clean_text", ""),
+            "full_text":         _get_field(e, "full_text", ""),
+            "has_image_context": _get_field(e, "has_image_context", False),
             "image_refs":        ir,
             "hybrid_score":      hit.score,
             "score":             hit.score,
@@ -127,9 +135,7 @@ if __name__ == "__main__":
             print(f"Result {i} | Score: {res['score']:.4f}")
             print(f"  Section : {res['section_path']}")
             print(f"  Pages   : {res['page_numbers']}")
-            print(f"  ImgCtx  : {res['has_image_context']}  |  ImgRefs: {res['image_refs']}")
-            snippet = str(res["clean_text"]).replace("\n", " ")[:120]
-            print(f"  Preview : {snippet}...")
+            print(f"  Preview : {str(res['clean_text']).replace(chr(10), ' ')[:120]}...")
             print()
     except Exception as e:
         print(f"Error during retrieval: {e}")
