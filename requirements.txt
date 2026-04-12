@@ -15,11 +15,13 @@ docling==2.80.0
 docling-core==2.70.0
 docling-ibm-models==3.12.0
 docling-parse==5.5.0
+einops>=0.8.0
 et_xmlfile==2.0.0
 Faker==40.11.0
 filelock==3.25.2
 filetype==1.2.0
 fsspec==2026.2.0
+groq>=0.9.0
 huggingface_hub==0.36.2
 idna==3.11
 Jinja2==3.1.6

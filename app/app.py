@@ -2,7 +2,6 @@ import os
 import sys
 import json
 import math
-import base64
 import hashlib
 import requests
 import html
@@ -14,30 +13,38 @@ import streamlit as st
 
 load_dotenv()
 
-# ─── PATH SETUP — import retrieve.py from pipeline/ ──────────────────────────
-# app.py lives in app/, retrieve.py lives in pipeline/
-# We add pipeline/ to sys.path so `from retrieve import retrieve` works.
+# ─── Groq SDK ─────────────────────────────────────────────────────────────────
+try:
+    from groq import (
+        Groq as _GroqClient,
+        RateLimitError as _GroqRateLimitError,
+        APITimeoutError as _GroqTimeoutError,
+    )
+    _GROQ_AVAILABLE = True
+except ImportError:
+    _GroqClient         = None
+    _GroqRateLimitError = None
+    _GroqTimeoutError   = None
+    _GROQ_AVAILABLE     = False
+
+# ─── PATH SETUP ──────────────────────────────────────────────────────────────
 _APP_DIR      = Path(__file__).parent.absolute()
 _PROJECT_ROOT = _APP_DIR.parent
 _PIPELINE_DIR = _PROJECT_ROOT / "pipeline"
 if str(_PIPELINE_DIR) not in sys.path:
     sys.path.insert(0, str(_PIPELINE_DIR))
 
-from retrieve import retrieve as _hybrid_retrieve   # BM25 + dense hybrid
-from knowledge_graph import show_knowledge_graph_page  # knowledge graph UI
+from retrieve import retrieve as _hybrid_retrieve
+from knowledge_graph import show_knowledge_graph_page
 
 # ─── CONFIG ──────────────────────────────────────────────────────────────────
 
-LM_STUDIO_BASE_URL = os.environ.get("LM_STUDIO_BASE_URL", "http://localhost:1234")
-EMBED_URL          = f"{LM_STUDIO_BASE_URL}/v1/embeddings"
-CHAT_URL           = f"{LM_STUDIO_BASE_URL}/v1/chat/completions"
-
-EMBED_MODEL = os.environ.get("LM_STUDIO_MODEL",     "nomic-ai/nomic-embed-text-v1.5-GGUF")
-CHAT_MODEL  = os.environ.get("LM_STUDIO_LLM_MODEL", "gemma-3-4b-it-Q4_K_M.gguf")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+GROQ_MODEL   = os.environ.get("GROQ_MODEL",   "llama-3.3-70b-versatile")
 
 APP_DIR      = _APP_DIR
 PROJECT_ROOT = _PROJECT_ROOT
-IMAGES_DIR   = PROJECT_ROOT / "extracted_images"
+# ✅ REMOVED: IMAGES_DIR — images now served from Cloudinary URLs
 OUTPUT_JSON  = PROJECT_ROOT / "output" / "evaluation_results.json"
 OUTPUT_CSV   = PROJECT_ROOT / "output" / "evaluation_results.csv"
 CHUNKS_PATH  = PROJECT_ROOT / "output" / "psychology2e_chunks.json"
@@ -46,7 +53,6 @@ TOP_K             = 5
 MAX_CONTEXT_CHARS = 4000
 FAITH_THRESHOLD   = 0.75
 
-# Pronouns that signal an ambiguous follow-up query
 AMBIGUOUS_PRONOUNS = {"it", "its", "they", "them", "their", "this", "that", "these", "those"}
 
 SUGGESTIONS = [
@@ -64,6 +70,11 @@ st.set_page_config(
     layout    = "wide",
     page_title= "NeuroNauts · Psychology AI",
     page_icon = "💠",
+)
+
+st.markdown(
+    '<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">',
+    unsafe_allow_html=True,
 )
 
 if "page"     not in st.session_state: st.session_state.page     = "chat"
@@ -93,7 +104,6 @@ html, body, [class*="css"] {
     padding: 2.5rem 2.5rem 7rem !important;
 }
 
-/* ── SIDEBAR ──────────────────────────────────────────────────────────────── */
 [data-testid="stSidebar"] {
     background: #0F172A !important; 
     border-right: 1px solid #1E293B !important;
@@ -130,7 +140,6 @@ html, body, [class*="css"] {
     color: #F8FAFC !important;
 }
 
-/* ── USER BUBBLE ─────────────────────────────────────────────────────────── */
 .user-bubble-wrap { display:flex; justify-content:flex-end; margin:1.5rem 0 1rem; width: 100%; }
 .user-bubble {
     background: #F1F5F9;
@@ -144,7 +153,6 @@ html, body, [class*="css"] {
     word-break: break-word;
 }
 
-/* ── ASSISTANT BUBBLE ────────────────────────────────────────────────────── */
 .assistant-wrap { display:flex; gap:16px; margin:1rem 0; align-items:flex-start; width: 100%; }
 .assistant-avatar {
     width: 32px; height: 32px; border-radius: 6px;
@@ -155,12 +163,16 @@ html, body, [class*="css"] {
 }
 .assistant-avatar svg { width: 18px; height: 18px; }
 .assistant-text {
-    flex: 1; font-size: 0.95rem; line-height: 1.7; min-width: 0;
+    flex: 1; font-size: 0.95rem; line-height: 1.75; min-width: 0;
     color: var(--text-main); word-break: break-word; padding-top: 2px;
 }
+.assistant-text p  { margin: 0 0 0.85em; }
+.assistant-text p:last-child { margin-bottom: 0; }
+.assistant-text ul, .assistant-text ol { margin: 0.4em 0 0.85em 1.2em; padding: 0; }
+.assistant-text li { margin-bottom: 0.3em; }
+.assistant-text strong { color: #1E293B; font-weight: 600; }
 .turn-divider { border:none; border-top:1px solid var(--border-color); margin:2rem 0; }
 
-/* ── SOURCES PANEL ───────────────────────────────────────────────────────── */
 .sources-header {
     font-size: 0.7rem; font-weight: 600; color: var(--text-muted);
     text-transform: uppercase; letter-spacing: 0.05em;
@@ -222,7 +234,6 @@ html, body, [class*="css"] {
     font-size: 0.65rem; font-weight: 500; color: var(--text-muted);
 }
 
-/* ── CHAT INPUT ───────────────────────────────────────────────────────────── */
 [data-testid="stChatInput"] {
     border-radius: 12px !important; border: 1px solid var(--border-color) !important;
     box-shadow: 0 4px 12px rgba(0,0,0,0.04) !important;
@@ -236,7 +247,6 @@ html, body, [class*="css"] {
     font-size:0.94rem !important; padding:14px 22px !important; color:var(--text-main) !important;
 }
 
-/* ── WELCOME CHIPS ────────────────────────────────────────────────────────── */
 div[data-testid="stHorizontalBlock"] .stButton > button {
     background:#fff !important; border:1px solid var(--border-color) !important;
     border-radius:10px !important; color:var(--text-main) !important;
@@ -251,7 +261,6 @@ div[data-testid="stHorizontalBlock"] .stButton > button:hover {
     color:var(--primary-hover) !important; 
 }
 
-/* ── STATUS PILL ─────────────────────────────────────────────────────────── */
 .status-pill {
     display:inline-flex; align-items:center; gap:8px;
     padding:8px 16px; background: white; border: 1px solid var(--border-color);
@@ -264,7 +273,6 @@ div[data-testid="stHorizontalBlock"] .stButton > button:hover {
 }
 @keyframes pulse-dot { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
 
-/* ── EVAL CARDS ──────────────────────────────────────────────────────────── */
 .metric-card {
     border-radius: 8px; padding: 24px 20px; text-align: center; 
     border: 1px solid var(--border-color); background: white;
@@ -273,14 +281,49 @@ div[data-testid="stHorizontalBlock"] .stButton > button:hover {
 .metric-label{font-size:0.8rem; color: var(--text-muted); margin-top:8px; font-weight:600;}
 .metric-sub{font-size:0.7rem; color: #94A3B8; margin-top:4px;}
 
-/* ── FAITHFULNESS ROWS ───────────────────────────────────────────────────── */
 .sent-row{display:flex;gap:8px;align-items:flex-start;padding:8px 0;
           border-bottom:1px solid var(--border-color);font-size:0.85rem; color:var(--text-main);}
 .sent-badge{flex-shrink:0;padding:2px 7px;border-radius:4px;
             font-size:0.65rem;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;}
 .sent-ok{background:#dcfce7;color:#15803d;border:1px solid #bbf7d0;}
 .sent-fail{background:#fee2e2;color:#dc2626;border:1px solid #fecaca;}
-.sent-sim{color:var(--text-muted);font-size:0.75rem;flex-shrink:0;font-variant-numeric:tabular-nums; margin-top:1px;}
+
+@media (max-width: 768px) {
+    .block-container { padding: 1.2rem 1rem 7rem !important; }
+    [data-testid="stSidebar"] { width: 220px !important; min-width: 220px !important; max-width: 220px !important; }
+    .user-bubble   { max-width: 88% !important; font-size: 0.9rem !important; }
+    .assistant-text { font-size: 0.9rem !important; line-height: 1.65 !important; }
+}
+
+@media (max-width: 480px) {
+    .block-container { padding: 0.75rem 0.6rem 6rem !important; }
+    .user-bubble-wrap { margin: 1rem 0 0.75rem !important; }
+    .user-bubble { max-width: 95% !important; font-size: 0.88rem !important; padding: 12px 15px !important; border-radius: 10px 10px 2px 10px !important; }
+    .assistant-wrap { gap: 10px !important; margin: 0.75rem 0 !important; }
+    .assistant-avatar { width: 28px !important; height: 28px !important; border-radius: 6px !important; }
+    .assistant-avatar svg { width: 15px !important; height: 15px !important; }
+    .assistant-text { font-size: 0.87rem !important; line-height: 1.65 !important; }
+    .turn-divider { margin: 1.2rem 0 !important; }
+    .src-card { padding: 10px !important; }
+    .src-section { font-size: 0.72rem !important; }
+    .src-preview { font-size: 0.67rem !important; }
+    [data-testid="stChatInput"] textarea { font-size: 0.9rem !important; padding: 12px 16px !important; min-height: 48px !important; }
+    div[data-testid="stHorizontalBlock"] .stButton > button { font-size: 0.8rem !important; padding: 11px 12px !important; min-height: 54px !important; }
+    .status-pill { font-size: 0.78rem !important; padding: 7px 13px !important; }
+    .metric-value { font-size: 1.5rem !important; }
+    .metric-label { font-size: 0.72rem !important; }
+    [data-testid="stSidebar"] { width: 80vw !important; max-width: 280px !important; min-width: unset !important; }
+}
+
+@media (pointer: coarse) {
+    [data-testid="stSidebar"] .stButton > button { min-height: 48px !important; padding: 12px 14px !important; }
+    .src-card:hover { border-color: var(--border-color) !important; box-shadow: none !important; }
+    [data-testid="stChatInput"] textarea { font-size: max(16px, 0.94rem) !important; }
+}
+
+img { max-width: 100% !important; height: auto !important; }
+* { box-sizing: border-box; }
+html, body { overflow-x: hidden !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -327,10 +370,11 @@ with st.sidebar:
         if st.button("＋ New Chat", use_container_width=True, type="tertiary", key="new_chat"):
             st.session_state.messages = []; st.rerun()
 
-    st.markdown("""
+    st.markdown(f"""
     <div style="position:fixed;bottom:1rem;left:0;width:260px;text-align:center;
-                font-size:0.6rem;color:#64748B;font-weight:500;">
-        WCE Hackathon 2026 · NeuroNauts
+                font-size:0.6rem;color:#64748B;font-weight:500;line-height:1.6;">
+        WCE Hackathon 2026 · NeuroNauts<br>
+        <span style="color:#4F46E5;">⚡ {GROQ_MODEL}</span>
     </div>
     """, unsafe_allow_html=True)
 
@@ -338,18 +382,10 @@ with st.sidebar:
 # ─── HELPERS ─────────────────────────────────────────────────────────────────
 
 def get_embeddings_batch(texts: list) -> list:
-    try:
-        r = requests.post(EMBED_URL, json={"model": EMBED_MODEL, "input": texts}, timeout=60)
-        r.raise_for_status()
-        data = sorted(r.json()["data"], key=lambda x: x["index"])
-        return [d["embedding"] for d in data]
-    except Exception:
-        results = []
-        for t in texts:
-            r = requests.post(EMBED_URL, json={"model": EMBED_MODEL, "input": [t]}, timeout=30)
-            r.raise_for_status()
-            results.append(r.json()["data"][0]["embedding"])
-        return results
+    from retrieve import _get_embed_model
+    model = _get_embed_model()
+    prefixed = [f"search_document: {t}" for t in texts]
+    return model.encode(prefixed, normalize_embeddings=True).tolist()
 
 
 def cosine_similarity(a: list, b: list) -> float:
@@ -359,10 +395,6 @@ def cosine_similarity(a: list, b: list) -> float:
     return 0.0 if (mag_a == 0 or mag_b == 0) else dot / (mag_a * mag_b)
 
 
-# ─── FIX 1: retrieve() — now uses hybrid BM25+dense from retrieve.py ─────────
-# The old retrieve() in app.py only did dense vector search (Milvus only),
-# which caused "Not found" for queries that needed keyword matching.
-# Now delegates to retrieve.py which does BM25 + dense fusion (hybrid RAG).
 def retrieve(query: str, top_k: int = TOP_K) -> list:
     return _hybrid_retrieve(query, top_k=top_k)
 
@@ -371,29 +403,17 @@ def build_context(chunks: list) -> str:
     return "\n\n".join([c["full_text"] for c in chunks])[:MAX_CONTEXT_CHARS]
 
 
-# ─── FIX 2: build_retrieval_query — only enriches AMBIGUOUS follow-ups ───────
-# Previous version always prepended history, which caused wrong images to
-# appear for unrelated questions (e.g. asking about problem-solving after
-# neurons pulled in neuron images because the history was concatenated).
-# Now only enriches when query is short AND contains an ambiguous pronoun.
 def build_retrieval_query(current_query: str) -> str:
     words = current_query.lower().split()
-
-    # Only enrich if query is short AND contains a referential pronoun
-    # "what are parts of it" → short (5 words) + "it" → enrich ✅
-    # "What is problem-solving in psychology?" → no pronoun → use as-is ✅
     is_ambiguous = (
         len(words) <= 10 and
         any(w in AMBIGUOUS_PRONOUNS for w in words)
     )
-
     if not is_ambiguous:
         return current_query
-
     messages    = st.session_state.messages
     prev_user   = None
     prev_answer = None
-
     for msg in reversed(messages):
         if msg["role"] == "assistant" and prev_answer is None:
             prev_answer = msg["content"][:150]
@@ -401,20 +421,55 @@ def build_retrieval_query(current_query: str) -> str:
             prev_user = msg["content"]
         if prev_user and prev_answer:
             break
-
     if not prev_user:
-        return current_query  # no history — use raw query
-
+        return current_query
     return f"{prev_user} {prev_answer or ''} {current_query}".strip()
 
 
-# ─── call_llm — conversation-aware ───────────────────────────────────────────
+RATE_LIMIT_ANSWER = "__RATE_LIMITED__"
+TIMEOUT_ANSWER    = "__TIMED_OUT__"
+AUTH_ERROR_ANSWER = "__AUTH_ERROR__"
+API_ERROR_ANSWER  = "__API_ERROR__"
+DB_ERROR_ANSWER   = "__DB_ERROR__"
+
+def _is_rate_limit_error(e: Exception) -> bool:
+    if _GroqRateLimitError and isinstance(e, _GroqRateLimitError):
+        return True
+    err = str(e).lower()
+    return any(k in err for k in ("rate_limit", "rate limit", "429", "quota", "tokens per"))
+
+
+def _is_timeout_error(e: Exception) -> bool:
+    if _GroqTimeoutError and isinstance(e, _GroqTimeoutError):
+        return True
+    err = str(e).lower()
+    return any(k in err for k in ("timeout", "timed out", "read timeout", "connection timeout"))
+
+def _is_auth_error(e: Exception) -> bool:
+    err = str(e).lower()
+    return "401" in err or "unauthorized" in err or "authentication" in err or "invalid api key" in err
+
+def _is_api_error(e: Exception) -> bool:
+    err = str(e).lower()
+    return "500" in err or "502" in err or "503" in err or "internal server error" in err or "bad gateway" in err
+
+
+def _get_groq_client() -> "_GroqClient":
+    if not _GROQ_AVAILABLE:
+        raise RuntimeError("groq package not installed. Run: pip install groq")
+    if not GROQ_API_KEY:
+        raise RuntimeError("GROQ_API_KEY is missing from environment/.env")
+    return _GroqClient(api_key=GROQ_API_KEY)
+
+
 def call_llm(question: str, context: str) -> str:
     history = []
     for msg in st.session_state.messages:
         if msg["role"] == "user":
             history.append({"role": "user", "content": msg["content"]})
-        elif msg["role"] == "assistant":
+        elif msg["role"] == "assistant" and msg["content"] not in (
+            RATE_LIMIT_ANSWER, TIMEOUT_ANSWER
+        ):
             history.append({"role": "assistant", "content": msg["content"]})
 
     if history and history[-1]["role"] == "user":
@@ -427,127 +482,167 @@ def call_llm(question: str, context: str) -> str:
         "content": (
             "You are a psychology textbook assistant with memory of this conversation. "
             "Answer using ONLY the provided context from the textbook. "
-            "Give a thorough, well-structured answer of at least 3-5 sentences. "
+            "DO NOT use outside knowledge. "
+            "Give a concise, well-structured answer of at least 3-5 sentences. "
             "Include key definitions, examples, and relevant details from the context. "
-            "Do NOT give a one-line or list-only answer. "
-            "Use the conversation history to understand follow-up questions — "
-            "if the user says 'it', 'they', 'this' etc., resolve the reference "
-            "from prior messages in this conversation. "
+            "ALWAYS include section and page references in your answer based on the context. "
+            "Use the conversation history to understand follow-up questions. "
             "Do NOT generate HTML. "
             "If the answer is not in the context, say: "
             "'Not found in the provided textbook'."
         )
     }
 
-    payload = {
-        "model":       CHAT_MODEL,
-        "messages":    [system] + history,
-        "temperature": 0.2,
-        "max_tokens":  800,
-    }
-    r = requests.post(CHAT_URL, json=payload, timeout=90)
-    r.raise_for_status()
-    return r.json()["choices"][0]["message"]["content"].strip()
+    try:
+        client = _get_groq_client()
+        completion = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[system] + history,
+            temperature=0.2,
+            max_tokens=800,
+            timeout=60,
+        )
+        return completion.choices[0].message.content.strip()
+    except Exception as e:
+        if _is_rate_limit_error(e):
+            return RATE_LIMIT_ANSWER
+        if _is_timeout_error(e):
+            return TIMEOUT_ANSWER
+        if _is_auth_error(e):
+            return AUTH_ERROR_ANSWER
+            
+        print(f"[Groq] Unexpected API error: {type(e).__name__}: {e}")
+        return API_ERROR_ANSWER
 
 
-# ─── call_llm_stateless — for evaluation only ────────────────────────────────
 def call_llm_stateless(question: str, context: str) -> str:
-    payload = {
-        "model": CHAT_MODEL,
-        "messages": [
-            {"role": "system", "content": (
-                "You are a psychology textbook assistant. "
-                "Answer using ONLY the provided context from the textbook. "
-                "Give a thorough, well-structured answer of at least 3-5 sentences. "
-                "Include key definitions, examples, and relevant details from the context. "
-                "Do NOT give a one-line or list-only answer. "
-                "Do NOT generate HTML. "
-                "If the answer is not in the context, say: "
-                "'Not found in the provided textbook'."
-            )},
-            {"role": "user", "content": (
-                f"Context from textbook:\n{context}\n\nQuestion: {question}"
-            )},
-        ],
-        "temperature": 0.1,
-        "max_tokens":  600,
-    }
-    r = requests.post(CHAT_URL, json=payload, timeout=90)
-    r.raise_for_status()
-    return r.json()["choices"][0]["message"]["content"].strip()
+    try:
+        client = _get_groq_client()
+        completion = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[
+                {"role": "system", "content": (
+                    "You are a psychology textbook assistant. "
+                    "Answer using ONLY the provided context from the textbook. "
+                    "DO NOT use outside knowledge. "
+                    "Give a concise, well-structured answer of at least 3-5 sentences. "
+                    "ALWAYS include section and page references in your answer based on the context. "
+                    "Include key definitions, examples, and relevant details from the context. "
+                    "Do NOT generate HTML. "
+                    "If the answer is not in the context, say: "
+                    "'Not found in the provided textbook'."
+                )},
+                {"role": "user", "content": (
+                    f"Context from textbook:\n{context}\n\nQuestion: {question}"
+                )},
+            ],
+            temperature=0.1,
+            max_tokens=600,
+        )
+        return completion.choices[0].message.content.strip()
+    except Exception as e:
+        if _is_rate_limit_error(e):
+            raise RuntimeError(
+                "RATE_LIMIT: Groq API quota exhausted. Please try again later."
+            ) from e
+        raise
 
 
-def get_image_hash(path: str) -> str:
-    with open(path, "rb") as f:
-        return hashlib.md5(f.read(4096)).hexdigest()
-
-
+# ✅ FIXED: get_images — now reads Cloudinary URLs from image_refs (no local files)
 def get_images(chunks: list) -> list:
-    imgs = []; seen_paths = set(); seen_hashes = set()
+    seen = set()
+    urls = []
     for c in chunks:
-        for ref in c["image_refs"]:
-            path     = IMAGES_DIR / ref
-            resolved = str(path.resolve())
-            if resolved in seen_paths: continue
-            seen_paths.add(resolved)
-            if not path.exists(): continue
-            h = get_image_hash(str(path))
-            if h in seen_hashes: continue
-            seen_hashes.add(h)
-            imgs.append({"path": str(path)})
-    return imgs
+        raw = c.get("image_refs", "[]")
+        try:
+            refs = json.loads(raw) if isinstance(raw, str) else raw
+        except (json.JSONDecodeError, TypeError):
+            refs = []
+        for url in refs:
+            if url and url not in seen:
+                seen.add(url)
+                urls.append({"url": url})
+    return urls
 
 
-# ─── UPDATED: HTML5 NATIVE DIALOG MODALS ─────────────────────────────────────
+# ─── IMAGE ROW ───────────────────────────────────────────────────────────────
+
+_IMG_CARD_CSS = """
+<style>
+.custom-gallery { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
+.custom-thumb-label { cursor: pointer; flex-shrink: 0; display: block; width: 200px; height: 130px; }
+.custom-thumb { 
+    width: 200px !important; height: 130px !important; object-fit: cover !important; 
+    border-radius: 8px; border: 1.5px solid #E2E8F0; box-shadow: 0 2px 8px rgba(0,0,0,.06);
+    transition: border-color .2s, box-shadow .2s; display: block !important;
+}
+.custom-thumb:hover { border-color: #4F46E5; box-shadow: 0 4px 14px rgba(79,70,229,.18); }
+
+.lightbox-toggle { display: none !important; }
+.lightbox-overlay {
+    display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+    background: rgba(10, 15, 30, 0.95); z-index: 999999;
+}
+.lightbox-toggle:checked + .lightbox-overlay { display: block !important; }
+.lightbox-bg-close {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%; cursor: pointer;
+}
+.lightbox-content-wrapper {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    max-width: 90vw; max-height: 80vh; pointer-events: none;
+    display: flex; justify-content: center; align-items: center;
+}
+.lightbox-img {
+    max-width: 100% !important; max-height: 80vh !important; border-radius: 8px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5); pointer-events: auto; background: white;
+    height: auto !important; object-fit: contain !important; display: block !important;
+}
+.lightbox-x-wrap {
+    position: absolute; top: 25px; right: 30px; cursor: pointer; z-index: 1000000;
+}
+.lightbox-x {
+    width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.2); color: white; display: flex;
+    align-items: center; justify-content: center; font-family: sans-serif;
+    font-size: 20px; transition: background 0.2s; pointer-events: auto;
+}
+.lightbox-x:hover { background: rgba(255,255,255,0.3); }
+.lightbox-footer {
+    position: absolute; bottom: 30px; width: 100%; text-align: center;
+    color: #94A3B8; font-size: 0.9rem; pointer-events: none; z-index: 1000000;
+}
+</style>
+"""
+
+# ✅ FIXED: render_image_row — uses Cloudinary URLs directly, no local file reads
 def render_image_row(images: list, msg_index: int = 0):
-    if not images: return
-    cards = modals = ""
-    for idx, img in enumerate(images):
-        with open(img["path"], "rb") as f:
-            b64 = base64.b64encode(f.read()).decode()
-        mid    = f"m{msg_index}_{idx}"
-        cards += (f'<div class="ic" onclick="document.getElementById(\'{mid}\').showModal()">'
-                  f'<img src="data:image/jpeg;base64,{b64}"/>'
-                  f'<div class="ov">🔍</div></div>')
-        modals+= (f'<dialog id="{mid}" class="img-modal" onclick="if(event.target === this) this.close()">'
-                  f'<span class="img-modal-close" onclick="document.getElementById(\'{mid}\').close()">&times;</span>'
-                  f'<img src="data:image/jpeg;base64,{b64}" class="img-modal-content" />'
-                  f'</dialog>')
+    if not images:
+        return
 
-    st.markdown(f"""
-    <style>
-        .img-row-container {{display:flex;overflow-x:auto;gap:12px;padding:8px 8px 16px 8px;
-              scrollbar-width:thin;scrollbar-color:#CBD5E1 transparent;}}
-        .ic {{flex:0 0 220px;height:140px;border-radius:8px;overflow:hidden;
-             cursor:zoom-in;border:1px solid #E2E8F0;position:relative;
-             transition:border-color .2s; box-shadow: 0 4px 6px rgba(0,0,0,0.05);}}
-        .ic:hover {{border-color:#4F46E5;}}
-        .ic img {{width:100%;height:100%;object-fit:cover;display:block;}}
-        .ov {{position:absolute;inset:0;background:rgba(79,70,229,0);
-             display:flex;align-items:center;justify-content:center;
-             font-size:1.6rem;opacity:0;transition:opacity .2s,background .2s;}}
-        .ic:hover .ov {{opacity:1;background:rgba(79,70,229,.2); backdrop-filter: blur(1px);}}
-        
-        /* Native HTML5 Dialog styles for robust full-screen Streamlit modals */
-        dialog.img-modal {{
-            padding: 0; border: none; border-radius: 12px; background: transparent;
-            max-width: 95vw; max-height: 95vh; overflow: visible; outline: none;
-        }}
-        dialog.img-modal::backdrop {{
-            background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(5px);
-        }}
-        .img-modal-content {{
-             max-width: 90vw; max-height: 90vh; border-radius: 8px;
-             object-fit: contain; box-shadow: 0 20px 60px rgba(0,0,0,.3); display: block; margin: auto;
-        }}
-        .img-modal-close {{
-            position:absolute;top:-40px;right:0;font-size:36px;
-              color:#fff;cursor:pointer;opacity:.6;transition:opacity .2s;line-height:1;
-        }}
-        .img-modal-close:hover {{opacity:1;}}
-    </style>
-    <div class="img-row-container">{cards}</div>{modals}
-    """, unsafe_allow_html=True)
+    st.markdown(_IMG_CARD_CSS, unsafe_allow_html=True)
+
+    html_parts = ['<div class="custom-gallery">']
+
+    for i, img in enumerate(images[:4]):  # Limit to top 4 most relevant images
+        url = img.get("url", "")
+        if not url:
+            continue
+
+        uid = f"lightbox-{msg_index}-{i}"
+
+        html_parts.append(
+            f'<label for="{uid}" class="custom-thumb-label"><img src="{url}" class="custom-thumb" title="Figure {i+1}" /></label>'
+            f'<input type="checkbox" id="{uid}" class="lightbox-toggle" />'
+            f'<div class="lightbox-overlay">'
+            f'<label for="{uid}" class="lightbox-bg-close"></label>'
+            f'<label for="{uid}" class="lightbox-x-wrap"><div class="lightbox-x">✕</div></label>'
+            f'<div class="lightbox-content-wrapper"><img src="{url}" class="lightbox-img" /></div>'
+            f'<div class="lightbox-footer">Click anywhere to close</div>'
+            f'</div>'
+        )
+
+    html_parts.append('</div>')
+    st.markdown("".join(html_parts), unsafe_allow_html=True)
 
 
 def render_sources_panel(sources: list):
@@ -581,6 +676,34 @@ def render_sources_panel(sources: list):
             st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
 
 
+def format_answer_html(text: str) -> str:
+    import re as _re
+    text = _re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
+    text = _re.sub(r'__(.+?)__',      r'<strong>\1</strong>', text)
+    paragraphs = _re.split(r'\n{2,}', text.strip())
+    html_parts = []
+    for para in paragraphs:
+        para = para.strip()
+        if not para:
+            continue
+        lines = para.split('\n')
+        bullet_lines = [l for l in lines
+                        if _re.match(r'^\s*[-*•]\s', l)
+                        or _re.match(r'^\s*\d+\.\s', l)]
+        if len(bullet_lines) >= 2:
+            is_ordered = all(_re.match(r'^\s*\d+\.\s', l) for l in bullet_lines)
+            tag = 'ol' if is_ordered else 'ul'
+            _bullet_re = r'^\s*[-*\u2022\d+.]+\s'
+            li_items  = [f'<li>{_re.sub(_bullet_re, "", l).strip()}</li>'
+                         for l in lines if l.strip()]
+            li_joined = "".join(li_items)
+            html_parts.append(f'<{tag}>{li_joined}</{tag}>')
+        else:
+            inner = '<br>'.join(l for l in lines if l.strip())
+            html_parts.append(f'<p>{inner}</p>')
+    return ''.join(html_parts) or f'<p>{html.escape(text)}</p>'
+
+
 # ─── RUN QUERY ───────────────────────────────────────────────────────────────
 
 def run_query(query: str):
@@ -591,19 +714,33 @@ def run_query(query: str):
             f'<span>{msg}</span></div>',
             unsafe_allow_html=True)
 
-    # Only enrich query for genuinely ambiguous follow-ups (short + pronoun)
-    # Unrelated follow-up questions go to retrieval as-is → correct images
     retrieval_query = build_retrieval_query(query)
 
     status("Searching knowledge base…")
-    chunks  = retrieve(retrieval_query)
+    try:
+        chunks  = retrieve(retrieval_query)
+    except Exception as e:
+        slot.empty()
+        print(f"[Zilliz] Error: {type(e).__name__}: {e}")
+        err_str = str(e).lower()
+        if "auth" in err_str or "unauthorized" in err_str or "token" in err_str or "401" in err_str:
+            return [], AUTH_ERROR_ANSWER, [], False, False
+        return [], DB_ERROR_ANSWER, [], False, False
+        
+    images  = get_images(chunks)   # ✅ now returns Cloudinary URLs
+
+    if not chunks:
+        slot.empty()
+        return chunks, "Not found in the provided textbook.", images, False, False
+
     status("Building context…")
     context = build_context(chunks)
-    images  = get_images(chunks)
     status("Generating answer…")
     answer  = call_llm(query, context)
     slot.empty()
-    return chunks, answer, images
+    rate_limited = (answer == RATE_LIMIT_ANSWER)
+    timed_out    = (answer == TIMEOUT_ANSWER)
+    return chunks, answer, images, rate_limited, timed_out
 
 
 # ─── EVAL HELPERS ────────────────────────────────────────────────────────────
@@ -727,48 +864,212 @@ def show_chat_page():
                 <div class="user-bubble">{html.escape(msg['content'])}</div>
             </div>""", unsafe_allow_html=True)
         else:
-            not_found = "not found in the provided textbook" in msg["content"].lower()
+            content = msg.get("content", "")
+            
+            # Strict sentinel evaluation
+            rate_limited = (content == RATE_LIMIT_ANSWER) or msg.get("rate_limited", False)
+            timed_out    = (content == TIMEOUT_ANSWER) or msg.get("timed_out", False)
+            auth_error   = (content == AUTH_ERROR_ANSWER)
+            api_error    = (content == API_ERROR_ANSWER)
+            db_error     = (content == DB_ERROR_ANSWER)
 
-            st.markdown(f"""
-            <div class="assistant-wrap">
-                <div class="assistant-avatar">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h10.5a2.25 2.25 0 002.25-2.25V6.75a2.25 2.25 0 00-2.25-2.25H6.75A2.25 2.25 0 004.5 6.75v10.5a2.25 2.25 0 002.25 2.25zm.75-12h9v9h-9v-9z" />
-                    </svg>
-                </div>
-                <div class="assistant-text">{html.escape(msg['content'])}</div>
-            </div>""", unsafe_allow_html=True)
+            is_error = rate_limited or timed_out or auth_error or api_error or db_error
 
-            if not not_found and msg.get("images"):
-                render_image_row(msg["images"], msg_index=idx)
+            not_found    = (
+                not is_error
+                and "not found in the provided textbook" in content.lower()
+            )
 
-            if not not_found and msg.get("sources"):
-                render_sources_panel(msg["sources"])
-
-            if not_found:
+            if rate_limited:
                 st.markdown("""
-                <div style="font-size:0.85rem;color:var(--text-muted);margin:0.5rem 0 1rem;
-                            display:inline-flex;align-items:center;gap:8px;
-                            padding:10px 16px;background:white;border-radius:6px;
-                            border:1px solid var(--border-color);">
-                    ⚠️&nbsp; Topic not found in the textbook.
+                <div style="
+                    background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%);
+                    border: 1px solid #4338CA; border-radius: 12px;
+                    padding: 28px 32px; margin: 1rem 0 1.2rem; max-width: 680px;">
+                    <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px;">
+                        <div style="width:44px;height:44px;border-radius:10px;
+                            background:rgba(99,102,241,0.25);border:1px solid #6366F1;
+                            display:flex;align-items:center;justify-content:center;
+                            font-size:1.4rem;flex-shrink:0;">⚡</div>
+                        <div>
+                            <div style="font-size:1rem;font-weight:700;color:#E0E7FF;">Service Temporarily at Capacity</div>
+                            <div style="font-size:0.75rem;color:#A5B4FC;margin-top:2px;">Groq API · Rate Limit Reached</div>
+                        </div>
+                    </div>
+                    <p style="color:#C7D2FE;font-size:0.88rem;line-height:1.65;margin:0 0 16px;">
+                        The AI service is currently at capacity due to high demand.
+                        This is a <strong style="color:#E0E7FF;">temporary situation</strong> — API quotas reset periodically.
+                    </p>
+                    <div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:14px 18px;font-size:0.82rem;color:#A5B4FC;line-height:1.8;">
+                        <strong style="color:#C7D2FE;display:block;margin-bottom:6px;">What you can do:</strong>
+                        🕐 &nbsp;Wait a <strong style="color:#E0E7FF;">few minutes</strong> and retry<br>
+                        ✍️ &nbsp;Try a <strong style="color:#E0E7FF;">shorter or more specific</strong> question<br>
+                        🔄 &nbsp;API quotas reset <strong style="color:#E0E7FF;">periodically</strong>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+            elif timed_out:
+                st.markdown("""
+                <div style="
+                    background: linear-gradient(135deg, #1c1408 0%, #2d1f05 100%);
+                    border: 1px solid #d97706; border-radius: 12px;
+                    padding: 28px 32px; margin: 1rem 0 1.2rem; max-width: 680px;">
+                    <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px;">
+                        <div style="width:44px;height:44px;border-radius:10px;
+                            background:rgba(217,119,6,0.2);border:1px solid #d97706;
+                            display:flex;align-items:center;justify-content:center;
+                            font-size:1.4rem;flex-shrink:0;">⏱️</div>
+                        <div>
+                            <div style="font-size:1rem;font-weight:700;color:#FEF3C7;">Request Timed Out</div>
+                            <div style="font-size:0.75rem;color:#FCD34D;margin-top:2px;">Groq API · Connection Timeout</div>
+                        </div>
+                    </div>
+                    <p style="color:#FDE68A;font-size:0.88rem;line-height:1.65;margin:0 0 16px;">
+                        The AI service took too long to respond during
+                        <strong style="color:#FEF3C7;">high traffic</strong> or a temporary network issue.
+                    </p>
+                    <div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:14px 18px;font-size:0.82rem;color:#FCD34D;line-height:1.8;">
+                        <strong style="color:#FEF3C7;display:block;margin-bottom:6px;">What you can do:</strong>
+                        🔄 &nbsp;<strong style="color:#FEF3C7;">Try again</strong> — most timeouts are transient<br>
+                        ✍️ &nbsp;Ask a <strong style="color:#FEF3C7;">shorter question</strong><br>
+                        📶 &nbsp;Check your <strong style="color:#FEF3C7;">internet connection</strong>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+            elif auth_error:
+                st.markdown("""
+                <div style="
+                    background: linear-gradient(135deg, #2a0a0a 0%, #4a0f0f 100%);
+                    border: 1px solid #b91c1c; border-radius: 12px;
+                    padding: 28px 32px; margin: 1rem 0 1.2rem; max-width: 680px;">
+                    <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px;">
+                        <div style="width:44px;height:44px;border-radius:10px;
+                            background:rgba(220,38,38,0.2);border:1px solid #dc2626;
+                            display:flex;align-items:center;justify-content:center;
+                            font-size:1.4rem;flex-shrink:0;">🔑</div>
+                        <div>
+                            <div style="font-size:1rem;font-weight:700;color:#fecaca;">Authentication Failed</div>
+                            <div style="font-size:0.75rem;color:#fca5a5;margin-top:2px;">Service API · Invalid Credentials</div>
+                        </div>
+                    </div>
+                    <p style="color:#fee2e2;font-size:0.88rem;line-height:1.65;margin:0 0 16px;">
+                        The application could not authenticate with the provider. 
+                        This typically means the <strong style="color:#ffffff;">API Key</strong> is missing, expired, or incorrectly formatted.
+                    </p>
+                    <div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:14px 18px;font-size:0.82rem;color:#fca5a5;line-height:1.8;">
+                        <strong style="color:#ffffff;display:block;margin-bottom:6px;">How to resolve:</strong>
+                        ⚙️ &nbsp;Ensure your <strong style="color:#ffffff;">.env</strong> file has the correct API keys<br>
+                        🔄 &nbsp;Restart the Streamlit application<br>
+                        💳 &nbsp;Check if your provider account requires billing updates
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+            elif api_error:
+                st.markdown("""
+                <div style="
+                    background: linear-gradient(135deg, #1e0a2a 0%, #3a0f4a 100%);
+                    border: 1px solid #7e22ce; border-radius: 12px;
+                    padding: 28px 32px; margin: 1rem 0 1.2rem; max-width: 680px;">
+                    <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px;">
+                        <div style="width:44px;height:44px;border-radius:10px;
+                            background:rgba(147,51,234,0.2);border:1px solid #9333ea;
+                            display:flex;align-items:center;justify-content:center;
+                            font-size:1.4rem;flex-shrink:0;">🤖</div>
+                        <div>
+                            <div style="font-size:1rem;font-weight:700;color:#e9d5ff;">Service Unavailable</div>
+                            <div style="font-size:0.75rem;color:#d8b4fe;margin-top:2px;">Groq API · Generation Error</div>
+                        </div>
+                    </div>
+                    <p style="color:#f3e8ff;font-size:0.88rem;line-height:1.65;margin:0 0 16px;">
+                        We encountered an unexpected error while generating the response.
+                        The AI provider might be experiencing <strong style="color:#ffffff;">service disruption</strong>.
+                    </p>
+                    <div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:14px 18px;font-size:0.82rem;color:#d8b4fe;line-height:1.8;">
+                        <strong style="color:#ffffff;display:block;margin-bottom:6px;">What you can do:</strong>
+                        🔄 &nbsp;<strong style="color:#ffffff;">Wait a moment</strong> and try again<br>
+                        🌐 &nbsp;Check the <strong style="color:#ffffff;">Groq status page</strong> for outages
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+            elif db_error:
+                st.markdown("""
+                <div style="
+                    background: linear-gradient(135deg, #061e24 0%, #083344 100%);
+                    border: 1px solid #0891b2; border-radius: 12px;
+                    padding: 28px 32px; margin: 1rem 0 1.2rem; max-width: 680px;">
+                    <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px;">
+                        <div style="width:44px;height:44px;border-radius:10px;
+                            background:rgba(6,182,212,0.2);border:1px solid #06b6d4;
+                            display:flex;align-items:center;justify-content:center;
+                            font-size:1.4rem;flex-shrink:0;">🗄️</div>
+                        <div>
+                            <div style="font-size:1rem;font-weight:700;color:#cffafe;">Database Connection Failed</div>
+                            <div style="font-size:0.75rem;color:#a5f3fc;margin-top:2px;">Zilliz Cloud · Retrieval Error</div>
+                        </div>
+                    </div>
+                    <p style="color:#ecfeff;font-size:0.88rem;line-height:1.65;margin:0 0 16px;">
+                        The application could not reach the vector database to retrieve textbook chunks.
+                        This usually indicates a <strong style="color:#ffffff;">network block</strong> or an issue with the Zilliz cluster.
+                    </p>
+                    <div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:14px 18px;font-size:0.82rem;color:#a5f3fc;line-height:1.8;">
+                        <strong style="color:#ffffff;display:block;margin-bottom:6px;">Diagnostic steps:</strong>
+                        📶 &nbsp;Ensure your network allows outbound connections on port 443<br>
+                        ⚙️ &nbsp;Verify the <strong style="color:#ffffff;">ZILLIZ_URI</strong> in your .env file is correct<br>
+                        ☁️ &nbsp;Check if the Zilliz Cloud instance is paused or sleeping
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                formatted = format_answer_html(msg['content'])
+                st.markdown(f"""
+                <div class="assistant-wrap">
+                    <div class="assistant-avatar">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h10.5a2.25 2.25 0 002.25-2.25V6.75a2.25 2.25 0 00-2.25-2.25H6.75A2.25 2.25 0 004.5 6.75v10.5a2.25 2.25 0 002.25 2.25zm.75-12h9v9h-9v-9z" />
+                        </svg>
+                    </div>
+                    <div class="assistant-text">{formatted}</div>
                 </div>""", unsafe_allow_html=True)
+
+                # ✅ Images now render from Cloudinary URLs
+                if not not_found and msg.get("images"):
+                    render_image_row(msg["images"], msg_index=idx)
+
+                if not not_found and msg.get("sources"):
+                    render_sources_panel(msg["sources"])
+
+                if not_found:
+                    st.markdown("""
+                    <div style="font-size:0.85rem;color:var(--text-muted);margin:0.5rem 0 1rem;
+                                display:inline-flex;align-items:center;gap:8px;
+                                padding:10px 16px;background:white;border-radius:6px;
+                                border:1px solid var(--border-color);">
+                        ⚠️&nbsp; Topic not found in the textbook.
+                    </div>""", unsafe_allow_html=True)
 
             st.markdown("<hr class='turn-divider'>", unsafe_allow_html=True)
 
     pending = st.session_state.pop("_pending_query", None)
     if pending:
-        chunks, answer, images = run_query(pending)
+        chunks, answer, images, rate_limited, timed_out = run_query(pending)
         st.session_state.messages.append({
-            "role":"assistant","content":answer,"sources":chunks,"images":images})
+            "role": "assistant", "content": answer,
+            "sources": chunks, "images": images,
+            "rate_limited": rate_limited,
+            "timed_out": timed_out,
+        })
         st.rerun()
 
     query = st.chat_input("Ask anything about psychology…")
     if query:
-        st.session_state.messages.append({"role":"user","content":query})
-        chunks, answer, images = run_query(query)
+        st.session_state.messages.append({"role": "user", "content": query})
+        chunks, answer, images, rate_limited, timed_out = run_query(query)
         st.session_state.messages.append({
-            "role":"assistant","content":answer,"sources":chunks,"images":images})
+            "role": "assistant", "content": answer,
+            "sources": chunks, "images": images,
+            "rate_limited": rate_limited,
+            "timed_out": timed_out,
+        })
         st.rerun()
 
 
@@ -787,8 +1088,7 @@ def show_evaluation_page():
                 </svg>
             </div>
             <div>
-                <h2 style="margin:0;font-size:1.6rem;font-weight:700;color:var(--text-main);
-                           letter-spacing:-0.02em;">RAG Evaluation</h2>
+                <h2 style="margin:0;font-size:1.6rem;font-weight:700;color:var(--text-main);">RAG Evaluation</h2>
                 <p style="margin:4px 0 0;font-size:0.85rem;color:var(--text-muted);">
                     Faithfulness &nbsp;·&nbsp; Answer Relevancy &nbsp;·&nbsp; No ground truth needed
                 </p>
@@ -807,16 +1107,15 @@ def show_evaluation_page():
 
     c1, c2 = st.columns([1, 2])
     with c1:
-        sample_size = st.slider("Queries to evaluate", 5, min(50, len(all_queries)), 15)
+        sample_size = st.slider("Queries to evaluate", 5, len(all_queries), len(all_queries))
     with c2:
         st.markdown(
             f"<div style='padding-top:1.8rem;color:var(--text-muted);font-size:0.85rem;'>"
-            f"Evaluating <strong>{sample_size}</strong> of {len(all_queries)} queries · "
-            f"~{sample_size*3} embedding batches + {sample_size} LLM calls</div>",
+            f"Evaluating <strong>{sample_size}</strong> of {len(all_queries)} queries</div>",
             unsafe_allow_html=True)
 
     if st.button("▶ Run Evaluation", type="primary"):
-        with st.spinner("Running evaluation — this takes a few minutes…"):
+        with st.spinner("Running evaluation…"):
             eval_data = run_evaluation(all_queries, sample_size)
         st.session_state["eval_data"] = eval_data
         st.success("✅ Evaluation complete!"); st.rerun()
