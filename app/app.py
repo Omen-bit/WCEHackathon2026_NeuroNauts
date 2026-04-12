@@ -730,6 +730,7 @@ def run_query(query: str):
     except Exception as e:
         slot.empty()
         print(f"[Zilliz] Error: {type(e).__name__}: {e}")
+        st.error(f"🛑 HIDDEN CRASH DETECTED: {type(e).__name__} - {e}")
         err_str = str(e).lower()
         if "auth" in err_str or "unauthorized" in err_str or "token" in err_str or "401" in err_str:
             return [], AUTH_ERROR_ANSWER, [], False, False
