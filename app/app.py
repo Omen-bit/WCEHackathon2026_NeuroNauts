@@ -39,8 +39,16 @@ from knowledge_graph import show_knowledge_graph_page
 
 # ─── CONFIG ──────────────────────────────────────────────────────────────────
 
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
-GROQ_MODEL   = os.environ.get("GROQ_MODEL",   "llama-3.3-70b-versatile")
+try:
+    import streamlit as st
+    _groq_key   = st.secrets.get("GROQ_API_KEY", os.environ.get("GROQ_API_KEY", ""))
+    _groq_model = st.secrets.get("GROQ_MODEL", os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile"))
+except Exception:
+    _groq_key   = os.environ.get("GROQ_API_KEY", "")
+    _groq_model = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+
+GROQ_API_KEY = _groq_key
+GROQ_MODEL   = _groq_model
 
 APP_DIR      = _APP_DIR
 PROJECT_ROOT = _PROJECT_ROOT

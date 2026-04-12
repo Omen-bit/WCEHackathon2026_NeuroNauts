@@ -17,7 +17,15 @@ _embed_model = None
 def _get_milvus_collection():
     global _collection
     if _collection is None:
-        connections.connect(alias="zilliz", uri=ZILLIZ_URI, token=ZILLIZ_TOKEN)
+        token = ZILLIZ_TOKEN
+        if not token:
+            try:
+                import streamlit as st
+                token = st.secrets["ZILLIZ_TOKEN"]
+            except Exception:
+                pass
+                
+        connections.connect(alias="zilliz", uri=ZILLIZ_URI, token=token)
         _collection = Collection("psychology2e_chunks", using="zilliz")
         _collection.load()
     return _collection
