@@ -62,7 +62,6 @@ python-docx==1.2.0
 python-dotenv==1.2.2
 python-pptx==1.0.2
 pytz==2026.1.post1
-pywin32==311
 PyYAML==6.0.3
 rapidocr==3.7.0
 referencing==0.37.0
