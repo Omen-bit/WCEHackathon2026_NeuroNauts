@@ -96,3 +96,8 @@ typing_extensions==4.15.0
 tzdata==2025.3
 urllib3==2.6.3
 xlsxwriter==3.2.9
+cloudinary==1.44.1
+pymilvus==2.6.10
+rank-bm25==0.2.2
+sentence-transformers==5.4.0
+streamlit==1.52.1
