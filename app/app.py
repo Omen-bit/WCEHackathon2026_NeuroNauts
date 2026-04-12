@@ -39,10 +39,7 @@ from knowledge_graph import show_knowledge_graph_page
 
 # ─── CONFIG ──────────────────────────────────────────────────────────────────
 
-GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
-
 def _resolve_groq_key() -> str:
-    """Lazily resolve GROQ_API_KEY from env or Streamlit secrets."""
     key = os.environ.get("GROQ_API_KEY", "")
     if key:
         return key
@@ -59,6 +56,8 @@ def _resolve_groq_model() -> str:
         return st.secrets.get("GROQ_MODEL", os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile"))
     except Exception:
         return os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
 
 APP_DIR      = _APP_DIR
 PROJECT_ROOT = _PROJECT_ROOT
@@ -530,7 +529,9 @@ def call_llm(question: str, context: str) -> str:
         if _is_auth_error(e):
             return AUTH_ERROR_ANSWER
             
-        print(f"[Groq] Unexpected API error: {type(e).__name__}: {e}")
+        err_msg = f"{type(e).__name__}: {e}"
+        print(f"[Groq] Unexpected API error: {err_msg}")
+        st.session_state["_last_groq_error"] = err_msg
         return API_ERROR_ANSWER
 
 
@@ -985,32 +986,8 @@ def show_chat_page():
                 </div>
                 """, unsafe_allow_html=True)
             elif api_error:
-                st.markdown("""
-                <div style="
-                    background: linear-gradient(135deg, #1e0a2a 0%, #3a0f4a 100%);
-                    border: 1px solid #7e22ce; border-radius: 12px;
-                    padding: 28px 32px; margin: 1rem 0 1.2rem; max-width: 680px;">
-                    <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px;">
-                        <div style="width:44px;height:44px;border-radius:10px;
-                            background:rgba(147,51,234,0.2);border:1px solid #9333ea;
-                            display:flex;align-items:center;justify-content:center;
-                            font-size:1.4rem;flex-shrink:0;">🤖</div>
-                        <div>
-                            <div style="font-size:1rem;font-weight:700;color:#e9d5ff;">Service Unavailable</div>
-                            <div style="font-size:0.75rem;color:#d8b4fe;margin-top:2px;">Groq API · Generation Error</div>
-                        </div>
-                    </div>
-                    <p style="color:#f3e8ff;font-size:0.88rem;line-height:1.65;margin:0 0 16px;">
-                        We encountered an unexpected error while generating the response.
-                        The AI provider might be experiencing <strong style="color:#ffffff;">service disruption</strong>.
-                    </p>
-                    <div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:14px 18px;font-size:0.82rem;color:#d8b4fe;line-height:1.8;">
-                        <strong style="color:#ffffff;display:block;margin-bottom:6px;">What you can do:</strong>
-                        🔄 &nbsp;<strong style="color:#ffffff;">Wait a moment</strong> and try again<br>
-                        🌐 &nbsp;Check the <strong style="color:#ffffff;">Groq status page</strong> for outages
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
+                last_err = st.session_state.get("_last_groq_error", "Unknown error")
+                st.error(f"🤖 Groq API Error: {last_err}")
             elif db_error:
                 st.markdown("""
                 <div style="
