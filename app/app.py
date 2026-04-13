@@ -13,6 +13,13 @@ import streamlit as st
 
 load_dotenv()
 
+st.set_page_config(
+    layout               = "wide",
+    page_title           = "NeuroNauts · Psychology AI",
+    page_icon            = "💠",
+    initial_sidebar_state= "expanded",
+)
+
 # ─── Groq SDK ─────────────────────────────────────────────────────────────────
 try:
     from groq import (
@@ -83,19 +90,87 @@ SUGGESTIONS = [
 
 # ─── PAGE CONFIG ─────────────────────────────────────────────────────────────
 
-st.set_page_config(
-    layout    = "wide",
-    page_title= "NeuroNauts · Psychology AI",
-    page_icon = "💠",
-)
-
 st.markdown(
     '<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">',
     unsafe_allow_html=True,
 )
 
+# Force sidebar always open by clearing localStorage state
+st.components.v1.html("""
+<script>
+(function() {
+    try {
+        // Clear any stored collapsed state
+        window.parent.localStorage.removeItem('stSidebarNavOpen');
+        window.parent.localStorage.removeItem('stSidebarState');
+        window.parent.localStorage.setItem('stSidebarNavOpen', 'true');
+    } catch(e) {}
+
+    function forceOpen() {
+        try {
+            var doc = window.parent.document;
+            // Click the collapsed button if sidebar is hidden
+            var btn = doc.querySelector('[data-testid="collapsedControl"]');
+            if (btn && btn.offsetParent !== null) {
+                btn.click();
+                return true;
+            }
+        } catch(e) {}
+        return false;
+    }
+
+    // Try multiple times to handle timing
+    setTimeout(forceOpen, 300);
+    setTimeout(forceOpen, 800);
+    setTimeout(forceOpen, 1500);
+
+    // Watch and re-open if collapsed
+    setTimeout(function() {
+        try {
+            var observer = new MutationObserver(function() {
+                var btn = window.parent.document.querySelector('[data-testid="collapsedControl"]');
+                if (btn && btn.offsetParent !== null) {
+                    setTimeout(function() { btn.click(); }, 100);
+                }
+            });
+            observer.observe(window.parent.document.body, {
+                childList: true, subtree: true, attributes: true,
+                attributeFilter: ['class', 'style']
+            });
+        } catch(e) {}
+    }, 2000);
+})();
+</script>
+""", height=0)
+
 if "page"     not in st.session_state: st.session_state.page     = "chat"
 if "messages" not in st.session_state: st.session_state.messages = []
+
+# ─── FORCE EXPAND SIDEBAR (Clears browser memory) ───────────────────────────
+st.components.v1.html("""
+<script>
+    function forceExpand() {
+        try {
+            // Clear Streamlit's persisted sidebar state from browser memory
+            window.parent.localStorage.setItem('stSidebarNav', 'expanded');
+            window.parent.localStorage.setItem('stSidebarState', 'expanded');
+            
+            const sidebar = window.parent.document.querySelector('[data-testid="stSidebar"]');
+            const expandButton = window.parent.document.querySelector('[data-testid="collapsedControl"]');
+            
+            // If it's still collapsed despite clearing memory, click the button
+            if (expandButton && (!sidebar || sidebar.clientWidth === 0)) {
+                expandButton.click();
+            }
+        } catch (e) {
+            console.error("Sidebar force error:", e);
+        }
+    }
+    // Attempt multiple times to ensure Streamlit has finished rendering
+    setTimeout(forceExpand, 300);
+    setTimeout(forceExpand, 1000);
+</script>
+""", height=0)
 
 # ─── GLOBAL CSS ──────────────────────────────────────────────────────────────
 
@@ -113,20 +188,114 @@ st.markdown("""
     color-scheme: light only;
 }
 
-html, body, [class*="css"] {
+/* Ensure native expand button is visible and colored */
+[data-testid="collapsedControl"] {
+    color: #4F46E5 !important;
+    background: rgba(79, 70, 229, 0.08) !important;
+    border-radius: 0 8px 8px 0 !important;
+    z-index: 99999 !important;
+}
+[data-testid="collapsedControl"] svg {
+    fill: #4F46E5 !important;
+}
+
+/* ── Force light mode on main content only (NOT sidebar) ── */
+html, body {
     font-family: 'Inter', 'Segoe UI', system-ui, sans-serif !important;
     color-scheme: light only !important;
     background-color: #ffffff !important;
     color: #0F172A !important;
+    -webkit-text-size-adjust: 100% !important;
 }
-#MainMenu, footer, header { visibility: hidden; }
+
+/* Main wrappers: light mode */
+[data-testid="stApp"],
+[data-testid="stAppViewContainer"],
+[data-testid="stMain"],
+section[data-testid="stMain"],
+.main {
+    background-color: #ffffff !important;
+    color: #0F172A !important;
+    color-scheme: light only !important;
+}
+
+/* ── Override mobile dark-mode — scoped to main content, not sidebar ── */
+@media (prefers-color-scheme: dark) {
+    html, body {
+        background-color: #ffffff !important;
+        color: #0F172A !important;
+        color-scheme: light !important;
+    }
+    /* Main area only */
+    [data-testid="stApp"],
+    [data-testid="stAppViewContainer"],
+    [data-testid="stMain"],
+    section[data-testid="stMain"],
+    .main {
+        background-color: #ffffff !important;
+        color: #0F172A !important;
+    }
+    /* Block container background */
+    .block-container {
+        background-color: #ffffff !important;
+    }
+    /* Assistant & user text */
+    .assistant-text, .assistant-text p,
+    .assistant-text li, .assistant-text strong,
+    .user-bubble {
+        color: #0F172A !important;
+    }
+    /* Chat input */
+    [data-testid="stChatInput"],
+    [data-testid="stChatInput"] textarea {
+        background-color: #ffffff !important;
+        color: #0F172A !important;
+        border-color: #E2E8F0 !important;
+    }
+    /* Source cards */
+    .src-card { background: #ffffff !important; }
+    .src-section { color: #0F172A !important; }
+    .src-num { background: #F8FAFC !important; color: #64748B !important; }
+    .src-preview, .src-page, .src-page-badge { color: #64748B !important; }
+    .sources-header { color: #64748B !important; }
+    /* Quick-start suggestion chips */
+    .block-container div[data-testid="stHorizontalBlock"] .stButton > button {
+        background: #ffffff !important;
+        color: #0F172A !important;
+        border-color: #E2E8F0 !important;
+    }
+    /* Expanders, metrics */
+    [data-testid="stExpander"] > div,
+    [data-testid="metric-container"] {
+        background-color: #ffffff !important;
+        color: #0F172A !important;
+    }
+    /* Input fields in main area */
+    section[data-testid="stMain"] input,
+    section[data-testid="stMain"] textarea,
+    section[data-testid="stMain"] select {
+        background-color: #ffffff !important;
+        color: #0F172A !important;
+    }
+}
+/* Hide Streamlit chrome */
+#MainMenu { display: none !important; }
+footer { display: none !important; }
+[data-testid="stToolbar"] { display: none !important; }
+[data-testid="stDecoration"] { display: none !important; }
+[data-testid="stStatusWidget"] { display: none !important; }
+/* Keep header visible so Streamlit's native sidebar toggle is accessible */
+header[data-testid="stHeader"] {
+    background: transparent !important;
+    border-bottom: none !important;
+}
 .block-container {
     max-width: 100% !important;
     padding: 2.5rem 2.5rem 7rem !important;
 }
 
 [data-testid="stSidebar"] {
-    background: #0F172A !important; 
+    background: #0F172A !important;
     border-right: 1px solid #1E293B !important;
     width: 260px !important; min-width: 260px !important; max-width: 260px !important;
     color-scheme: dark !important;
@@ -211,20 +380,39 @@ section[data-testid="stMain"] {
     display: flex; align-items: center; gap: 8px;
 }
 
+/* ── Source card grid: auto-fill responsive columns ── */
+.src-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
+    margin-top: 0;
+    width: 100%;
+}
+@media (max-width: 520px) {
+    .src-grid {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+}
+@media (min-width: 521px) and (max-width: 800px) {
+    .src-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 9px;
+    }
+}
 .src-card {
     background: #ffffff !important; 
     border: 1px solid #E2E8F0 !important;
     border-radius: 6px; 
     padding: 12px; 
-    margin-bottom: 0;
-    transition: all 0.2s ease;
+    margin: 0;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
     width: 100%; 
     min-width: 0; 
     box-sizing: border-box;
     overflow: hidden; 
     display: flex;
     flex-direction: column;
-    height: 100%;
 }
 .src-card:hover {
     border-color: #CBD5E1 !important;
@@ -687,29 +875,26 @@ def render_sources_panel(sources: list):
         f'<div class="sources-header">📄 &nbsp;{n} source{"s" if n!=1 else ""} retrieved</div>',
         unsafe_allow_html=True
     )
-    for i in range(0, n, 3):
-        cols = st.columns(3, gap="small")
-        chunk = sources[i:i+3]
-        for j, s in enumerate(chunk):
-            with cols[j]:
-                idx = i + j + 1
-                section = html.escape(s["section_path"].replace(" > ", " › "))
-                preview = html.escape(s.get("clean_text", "")[:120])
-                pages   = ", ".join(map(str, s["page_numbers"]))
-                st.markdown(f"""
-                <div class="src-card">
-                    <div class="src-card-top">
-                        <span class="src-num">#{idx}</span>
-                        <span class="src-section">{section}</span>
-                    </div>
-                    <div class="src-preview">{preview}…</div>
-                    <div class="src-page">
-                        <span class="src-page-badge">Page {pages}</span>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-        if i + 3 < n:
-            st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
+    # Build all cards as a single HTML grid — no st.columns() so spacing is
+    # perfectly uniform at every screen width (1-col mobile, 2-col tablet, 3-col desktop)
+    cards_html = ['<div class="src-grid">']
+    for idx, s in enumerate(sources, 1):
+        section = html.escape(s["section_path"].replace(" > ", " › "))
+        preview = html.escape(s.get("clean_text", "")[:120])
+        pages   = ", ".join(map(str, s["page_numbers"]))
+        cards_html.append(f"""
+        <div class="src-card">
+            <div class="src-card-top">
+                <span class="src-num">#{idx}</span>
+                <span class="src-section">{section}</span>
+            </div>
+            <div class="src-preview">{preview}…</div>
+            <div class="src-page">
+                <span class="src-page-badge">Page {pages}</span>
+            </div>
+        </div>""")
+    cards_html.append('</div>')
+    st.markdown("".join(cards_html), unsafe_allow_html=True)
 
 
 def format_answer_html(text: str) -> str:
@@ -856,6 +1041,21 @@ def run_evaluation(queries: list, sample_size: int) -> dict:
 # ─── PAGE: CHAT ───────────────────────────────────────────────────────────────
 
 def show_chat_page():
+
+    # ── Process any pending query FIRST before rendering ──────────────────────
+    # This ensures that when a suggestion chip triggers a query, the assistant
+    # response (with images) is already in session_state BEFORE we render,
+    # so images appear immediately on the very first question.
+    pending = st.session_state.pop("_pending_query", None)
+    if pending:
+        chunks, answer, images, rate_limited, timed_out = run_query(pending)
+        st.session_state.messages.append({
+            "role": "assistant", "content": answer,
+            "sources": chunks, "images": images,
+            "rate_limited": rate_limited,
+            "timed_out": timed_out,
+        })
+        st.rerun()
 
     if not st.session_state.messages:
         st.markdown("""
@@ -1044,7 +1244,7 @@ def show_chat_page():
                     <div class="assistant-text">{formatted}</div>
                 </div>""", unsafe_allow_html=True)
 
-                # ✅ Images now render from Cloudinary URLs
+                # ✅ Images render from Cloudinary URLs
                 if not not_found and msg.get("images"):
                     render_image_row(msg["images"], msg_index=idx)
 
@@ -1061,17 +1261,6 @@ def show_chat_page():
                     </div>""", unsafe_allow_html=True)
 
             st.markdown("<hr class='turn-divider'>", unsafe_allow_html=True)
-
-    pending = st.session_state.pop("_pending_query", None)
-    if pending:
-        chunks, answer, images, rate_limited, timed_out = run_query(pending)
-        st.session_state.messages.append({
-            "role": "assistant", "content": answer,
-            "sources": chunks, "images": images,
-            "rate_limited": rate_limited,
-            "timed_out": timed_out,
-        })
-        st.rerun()
 
     query = st.chat_input("Ask anything about psychology…")
     if query:
