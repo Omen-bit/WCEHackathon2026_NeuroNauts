@@ -647,11 +647,13 @@ def build_retrieval_query(current_query: str) -> str:
     return f"{prev_user} {prev_answer or ''} {current_query}".strip()
 
 
-RATE_LIMIT_ANSWER = "__RATE_LIMITED__"
-TIMEOUT_ANSWER    = "__TIMED_OUT__"
-AUTH_ERROR_ANSWER = "__AUTH_ERROR__"
-API_ERROR_ANSWER  = "__API_ERROR__"
-DB_ERROR_ANSWER   = "__DB_ERROR__"
+RATE_LIMIT_ANSWER  = "__RATE_LIMITED__"
+TIMEOUT_ANSWER     = "__TIMED_OUT__"
+AUTH_ERROR_ANSWER  = "__AUTH_ERROR__"
+API_ERROR_ANSWER   = "__API_ERROR__"
+DB_ERROR_ANSWER    = "__DB_ERROR__"
+MODEL_ERROR_ANSWER = "__MODEL_ERROR__"
+PKG_ERROR_ANSWER   = "__PKG_ERROR__"
 
 def _is_rate_limit_error(e: Exception) -> bool:
     if _GroqRateLimitError and isinstance(e, _GroqRateLimitError):
@@ -675,12 +677,16 @@ def _is_api_error(e: Exception) -> bool:
     return "500" in err or "502" in err or "503" in err or "internal server error" in err or "bad gateway" in err
 
 
+def _is_model_error(e: Exception) -> bool:
+    err = str(e).lower()
+    return "model" in err and ("not found" in err or "does not exist" in err or "invalid" in err)
+
 def _get_groq_client() -> "_GroqClient":
     if not _GROQ_AVAILABLE:
-        raise RuntimeError("groq package not installed. Run: pip install groq")
+        raise RuntimeError("__PKG_MISSING__")
     api_key = _resolve_groq_key()
     if not api_key:
-        raise RuntimeError("GROQ_API_KEY is missing. Add it to Streamlit Cloud Secrets.")
+        raise RuntimeError("__AUTH_MISSING__")
     return _GroqClient(api_key=api_key)
 
 
@@ -726,16 +732,15 @@ def call_llm(question: str, context: str) -> str:
         )
         return completion.choices[0].message.content.strip()
     except Exception as e:
-        if _is_rate_limit_error(e):
-            return RATE_LIMIT_ANSWER
-        if _is_timeout_error(e):
-            return TIMEOUT_ANSWER
-        if _is_auth_error(e):
-            return AUTH_ERROR_ANSWER
-            
-        err_msg = f"{type(e).__name__}: {e}"
-        print(f"[Groq] Unexpected API error: {err_msg}")
-        st.session_state["_last_groq_error"] = err_msg
+        err = str(e)
+        if _is_rate_limit_error(e):   return RATE_LIMIT_ANSWER
+        if _is_timeout_error(e):      return TIMEOUT_ANSWER
+        if _is_auth_error(e):         return AUTH_ERROR_ANSWER
+        if "__PKG_MISSING__"  in err: return PKG_ERROR_ANSWER
+        if "__AUTH_MISSING__" in err: return AUTH_ERROR_ANSWER
+        if _is_model_error(e):        return MODEL_ERROR_ANSWER
+        print(f"[Groq] Unexpected error: {type(e).__name__}: {e}")
+        st.session_state["_last_groq_error"] = f"{type(e).__name__}: {e}"
         return API_ERROR_ANSWER
 
 
@@ -772,21 +777,76 @@ def call_llm_stateless(question: str, context: str) -> str:
         raise
 
 
-# ✅ FIXED: get_images — now reads Cloudinary URLs from image_refs (no local files)
-def get_images(chunks: list) -> list:
-    seen = set()
-    urls = []
-    for c in chunks:
-        raw = c.get("image_refs", "[]")
+# Cloudinary: cloud=dnbnrxyn1, folder=psychology2e
+# public_id format: "psychology2e/img_p91_0"  (NO extension)
+# URL format: https://res.cloudinary.com/dnbnrxyn1/image/upload/psychology2e/img_p91_0
+_CLOUDINARY_BASE = "https://res.cloudinary.com/dnbnrxyn1/image/upload/psychology2e"
+
+
+def _parse_image_refs(raw) -> list:
+    """
+    Parse the image_refs field from Zilliz.
+    Zilliz stores it as a JSON-encoded string, e.g.: '["img_p19_0.jpeg"]'
+    or occasionally double-encoded: '"[\"img_p19_0.jpeg\"]"'
+    Handles both, plus empty lists and None values.
+    Always returns a flat list of filename strings.
+    """
+    if not raw:
+        return []
+    if isinstance(raw, list):
+        return [str(x).strip() for x in raw if x]
+    if not isinstance(raw, str):
+        return []
+    current = raw.strip()
+    if not current or current in ("[]", "null", "None", '"[]"'):
+        return []
+    # Try up to 2 rounds of JSON decoding (handles single- and double-encoding)
+    for _ in range(2):
         try:
-            refs = json.loads(raw) if isinstance(raw, str) else raw
-        except (json.JSONDecodeError, TypeError):
-            refs = []
-        for url in refs:
-            if url and url not in seen:
-                seen.add(url)
-                urls.append({"url": url})
-    return urls
+            decoded = json.loads(current)
+        except (json.JSONDecodeError, ValueError):
+            break
+        if isinstance(decoded, list):
+            return [str(x).strip() for x in decoded if x]
+        if isinstance(decoded, str):
+            current = decoded   # unwrap one layer, retry
+        else:
+            break
+    return []
+
+
+def get_images(chunks: list) -> list:
+    """
+    Extract unique Cloudinary image URLs from retrieved chunks.
+    - Parses image_refs (handles Zilliz JSON encoding).
+    - Converts bare filenames → full Cloudinary URLs.
+    - Cloudinary public_id = filename WITHOUT extension, so we strip it.
+      e.g. "img_p91_0.jpeg" → public_id "img_p91_0"
+      URL: https://res.cloudinary.com/dnbnrxyn1/image/upload/img_p91_0
+      (Cloudinary serves the original format automatically without the extension)
+    - Deduplicates by stem so same image never appears twice.
+    """
+    seen_stems = set()
+    result = []
+    for chunk in chunks:
+        refs = _parse_image_refs(chunk.get("image_refs"))
+        for filename in refs:
+            filename = filename.strip()
+            if not filename:
+                continue
+            # Already a full URL — use directly
+            if filename.startswith("http://") or filename.startswith("https://"):
+                full_url = filename
+                stem = filename.rstrip("/").split("/")[-1].rsplit(".", 1)[0].lower()
+            else:
+                # Strip extension to get Cloudinary public_id
+                # e.g. "img_p91_0.jpeg" → "img_p91_0"
+                stem = filename.rsplit(".", 1)[0].lower()
+                full_url = f"{_CLOUDINARY_BASE}/{stem}"
+            if stem and stem not in seen_stems:
+                seen_stems.add(stem)
+                result.append({"url": full_url, "stem": stem})
+    return result
 
 
 # ─── IMAGE ROW ───────────────────────────────────────────────────────────────
@@ -838,30 +898,34 @@ _IMG_CARD_CSS = """
 </style>
 """
 
-# ✅ FIXED: render_image_row — uses Cloudinary URLs directly, no local file reads
 def render_image_row(images: list, msg_index: int = 0):
+    """Render up to 4 unique images as a clickable thumbnail gallery with lightbox."""
     if not images:
         return
 
     st.markdown(_IMG_CARD_CSS, unsafe_allow_html=True)
-
     html_parts = ['<div class="custom-gallery">']
 
-    for i, img in enumerate(images[:4]):  # Limit to top 4 most relevant images
-        url = img.get("url", "")
+    for i, img in enumerate(images[:4]):
+        url  = img.get("url", "").strip()
         if not url:
             continue
-
-        uid = f"lightbox-{msg_index}-{i}"
+        stem  = img.get("stem", f"img_{i}")
+        label = stem.replace("_", " ").title()
+        uid   = f"lb-{msg_index}-{i}"
 
         html_parts.append(
-            f'<label for="{uid}" class="custom-thumb-label"><img src="{url}" class="custom-thumb" title="Figure {i+1}" /></label>'
-            f'<input type="checkbox" id="{uid}" class="lightbox-toggle" />'
+            f'<label for="{uid}" class="custom-thumb-label">'
+            f'<img src="{url}" class="custom-thumb" alt="{label}" title="{label}"'
+            f' onerror="this.closest(\'label\').style.display=\'none\'"/>'
+            f'</label>'
+            f'<input type="checkbox" id="{uid}" class="lightbox-toggle"/>'
             f'<div class="lightbox-overlay">'
             f'<label for="{uid}" class="lightbox-bg-close"></label>'
             f'<label for="{uid}" class="lightbox-x-wrap"><div class="lightbox-x">✕</div></label>'
-            f'<div class="lightbox-content-wrapper"><img src="{url}" class="lightbox-img" /></div>'
-            f'<div class="lightbox-footer">Click anywhere to close</div>'
+            f'<div class="lightbox-content-wrapper">'
+            f'<img src="{url}" class="lightbox-img" alt="{label}"/></div>'
+            f'<div class="lightbox-footer">{label} · Click anywhere to close</div>'
             f'</div>'
         )
 
@@ -943,7 +1007,6 @@ def run_query(query: str):
     except Exception as e:
         slot.empty()
         print(f"[Zilliz] Error: {type(e).__name__}: {e}")
-        st.error(f"🛑 HIDDEN CRASH DETECTED: {type(e).__name__} - {e}")
         err_str = str(e).lower()
         if "auth" in err_str or "unauthorized" in err_str or "token" in err_str or "401" in err_str:
             return [], AUTH_ERROR_ANSWER, [], False, False
@@ -1105,12 +1168,16 @@ def show_chat_page():
             
             # Strict sentinel evaluation
             rate_limited = (content == RATE_LIMIT_ANSWER) or msg.get("rate_limited", False)
-            timed_out    = (content == TIMEOUT_ANSWER) or msg.get("timed_out", False)
+            timed_out    = (content == TIMEOUT_ANSWER)    or msg.get("timed_out", False)
             auth_error   = (content == AUTH_ERROR_ANSWER)
             api_error    = (content == API_ERROR_ANSWER)
             db_error     = (content == DB_ERROR_ANSWER)
+            model_error  = (content == MODEL_ERROR_ANSWER)
+            pkg_error    = (content == PKG_ERROR_ANSWER)
 
-            is_error = rate_limited or timed_out or auth_error or api_error or db_error
+            model_error = (content == MODEL_ERROR_ANSWER)
+            pkg_error   = (content == PKG_ERROR_ANSWER)
+            is_error = rate_limited or timed_out or auth_error or api_error or db_error or model_error or pkg_error
 
             not_found    = (
                 not is_error
@@ -1202,8 +1269,84 @@ def show_chat_page():
                 </div>
                 """, unsafe_allow_html=True)
             elif api_error:
-                last_err = st.session_state.get("_last_groq_error", "Unknown error")
-                st.error(f"🤖 Groq API Error: {last_err}")
+                st.markdown("""
+                <div style="background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);
+                    border:1px solid #374151;border-radius:12px;
+                    padding:28px 32px;margin:1rem 0 1.2rem;max-width:680px;">
+                    <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px;">
+                        <div style="width:44px;height:44px;border-radius:10px;
+                            background:rgba(107,114,128,0.2);border:1px solid #6B7280;
+                            display:flex;align-items:center;justify-content:center;
+                            font-size:1.4rem;flex-shrink:0;">🤖</div>
+                        <div>
+                            <div style="font-size:1rem;font-weight:700;color:#F9FAFB;">AI Service Unavailable</div>
+                            <div style="font-size:0.75rem;color:#9CA3AF;margin-top:2px;">Groq API · Unexpected Error</div>
+                        </div>
+                    </div>
+                    <p style="color:#D1D5DB;font-size:0.88rem;line-height:1.65;margin:0 0 16px;">
+                        The AI service encountered an unexpected issue while processing your request.
+                        This is usually <strong style="color:#F9FAFB;">temporary</strong>.
+                    </p>
+                    <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:14px 18px;font-size:0.82rem;color:#9CA3AF;line-height:1.8;">
+                        <strong style="color:#F9FAFB;display:block;margin-bottom:6px;">What you can do:</strong>
+                        🔄 &nbsp;<strong style="color:#F9FAFB;">Try asking again</strong> — the issue is likely transient<br>
+                        ✍️ &nbsp;Rephrase your question slightly<br>
+                        🕐 &nbsp;Wait a moment and retry if the problem persists
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+            elif model_error:
+                st.markdown("""
+                <div style="background:linear-gradient(135deg,#1c1008 0%,#2c1a0a 100%);
+                    border:1px solid #92400e;border-radius:12px;
+                    padding:28px 32px;margin:1rem 0 1.2rem;max-width:680px;">
+                    <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px;">
+                        <div style="width:44px;height:44px;border-radius:10px;
+                            background:rgba(180,83,9,0.2);border:1px solid #B45309;
+                            display:flex;align-items:center;justify-content:center;
+                            font-size:1.4rem;flex-shrink:0;">⚙️</div>
+                        <div>
+                            <div style="font-size:1rem;font-weight:700;color:#FEF3C7;">AI Model Configuration Error</div>
+                            <div style="font-size:0.75rem;color:#FCD34D;margin-top:2px;">Groq API · Model Not Found</div>
+                        </div>
+                    </div>
+                    <p style="color:#FDE68A;font-size:0.88rem;line-height:1.65;margin:0 0 16px;">
+                        The configured AI model is unavailable or no longer supported by the API provider.
+                    </p>
+                    <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:14px 18px;font-size:0.82rem;color:#FCD34D;line-height:1.8;">
+                        <strong style="color:#FEF3C7;display:block;margin-bottom:6px;">How to resolve:</strong>
+                        ⚙️ &nbsp;Update <strong style="color:#FEF3C7;">GROQ_MODEL</strong> in your .env or Streamlit secrets<br>
+                        📋 &nbsp;Check supported models at <strong style="color:#FEF3C7;">console.groq.com</strong><br>
+                        🔄 &nbsp;Restart the application after updating the model name
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+            elif pkg_error:
+                st.markdown("""
+                <div style="background:linear-gradient(135deg,#0f0f23 0%,#1a1a3e 100%);
+                    border:1px solid #4F46E5;border-radius:12px;
+                    padding:28px 32px;margin:1rem 0 1.2rem;max-width:680px;">
+                    <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px;">
+                        <div style="width:44px;height:44px;border-radius:10px;
+                            background:rgba(79,70,229,0.2);border:1px solid #4F46E5;
+                            display:flex;align-items:center;justify-content:center;
+                            font-size:1.4rem;flex-shrink:0;">📦</div>
+                        <div>
+                            <div style="font-size:1rem;font-weight:700;color:#E0E7FF;">Missing Dependency</div>
+                            <div style="font-size:0.75rem;color:#A5B4FC;margin-top:2px;">Environment · Package Not Installed</div>
+                        </div>
+                    </div>
+                    <p style="color:#C7D2FE;font-size:0.88rem;line-height:1.65;margin:0 0 16px;">
+                        A required package is missing from this environment.
+                    </p>
+                    <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:14px 18px;font-size:0.82rem;color:#A5B4FC;line-height:1.8;">
+                        <strong style="color:#E0E7FF;display:block;margin-bottom:6px;">How to resolve:</strong>
+                        💻 &nbsp;Run <strong style="color:#E0E7FF;">pip install groq</strong> in your terminal<br>
+                        🔄 &nbsp;Restart the Streamlit application<br>
+                        📋 &nbsp;Ensure <strong style="color:#E0E7FF;">requirements.txt</strong> includes all dependencies
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
             elif db_error:
                 st.markdown("""
                 <div style="
@@ -1253,11 +1396,17 @@ def show_chat_page():
 
                 if not_found:
                     st.markdown("""
-                    <div style="font-size:0.85rem;color:var(--text-muted);margin:0.5rem 0 1rem;
-                                display:inline-flex;align-items:center;gap:8px;
-                                padding:10px 16px;background:white;border-radius:6px;
-                                border:1px solid var(--border-color);">
-                        ⚠️&nbsp; Topic not found in the textbook.
+                    <div style="margin:0.5rem 0 1rem;max-width:580px;
+                                padding:20px 24px;background:#FAFAFA;border-radius:10px;
+                                border:1px solid #E2E8F0;">
+                        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+                            <span style="font-size:1.1rem;">🔍</span>
+                            <span style="font-size:0.9rem;font-weight:600;color:#0F172A;">Not found in the textbook</span>
+                        </div>
+                        <p style="font-size:0.82rem;color:#64748B;margin:0;line-height:1.6;">
+                            This topic doesn't appear in the OpenStax Psychology 2e textbook content we have indexed.
+                            Try rephrasing your question or asking about a related psychology concept.
+                        </p>
                     </div>""", unsafe_allow_html=True)
 
             st.markdown("<hr class='turn-divider'>", unsafe_allow_html=True)
@@ -1302,7 +1451,19 @@ def show_evaluation_page():
 
     queries_path = PROJECT_ROOT / "queries.json"
     if not queries_path.exists():
-        st.error("queries.json not found at: " + str(queries_path)); return
+        st.markdown("""
+        <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;
+            padding:20px 24px;max-width:600px;margin:1rem 0;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+                <span style="font-size:1.1rem;">📂</span>
+                <span style="font-size:0.9rem;font-weight:600;color:#92400E;">Evaluation data not found</span>
+            </div>
+            <p style="font-size:0.82rem;color:#78350F;margin:0;line-height:1.6;">
+                The <strong>queries.json</strong> file is missing from the project output directory.
+                Please ensure the evaluation dataset has been generated before running this page.
+            </p>
+        </div>""", unsafe_allow_html=True)
+        return
 
     with open(queries_path, encoding="utf-8") as f:
         all_queries = json.load(f)
@@ -1415,9 +1576,50 @@ def show_evaluation_page():
 
 # ─── ROUTER ──────────────────────────────────────────────────────────────────
 
-if st.session_state.page == "chat":
-    show_chat_page()
-elif st.session_state.page == "kg":
-    show_knowledge_graph_page(CHUNKS_PATH)
-else:
-    show_evaluation_page()
+def _render_fatal_error(context: str, err: Exception):
+    """Last-resort handler: shows a professional error instead of a raw traceback."""
+    import traceback
+    print(f"[FATAL] {context}: {type(err).__name__}: {err}")
+    print(traceback.format_exc())
+    st.markdown(f"""
+    <div style="background:linear-gradient(135deg,#1a0a0a 0%,#2d0f0f 100%);
+        border:1px solid #7f1d1d;border-radius:12px;
+        padding:32px 36px;margin:2rem auto;max-width:680px;">
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;">
+            <div style="width:48px;height:48px;border-radius:10px;
+                background:rgba(239,68,68,0.15);border:1px solid #ef4444;
+                display:flex;align-items:center;justify-content:center;
+                font-size:1.5rem;flex-shrink:0;">⚠️</div>
+            <div>
+                <div style="font-size:1.05rem;font-weight:700;color:#FEE2E2;">
+                    Something went wrong</div>
+                <div style="font-size:0.75rem;color:#FCA5A5;margin-top:3px;">
+                    NeuroNauts · Unexpected Error</div>
+            </div>
+        </div>
+        <p style="color:#FECACA;font-size:0.88rem;line-height:1.7;margin:0 0 18px;">
+            An unexpected error occurred while loading this page.
+            The issue has been logged automatically.
+            Please try refreshing the page or starting a new chat session.
+        </p>
+        <div style="background:rgba(255,255,255,0.04);border-radius:8px;
+            padding:14px 18px;font-size:0.82rem;color:#FCA5A5;line-height:1.9;">
+            <strong style="color:#FEE2E2;display:block;margin-bottom:6px;">
+                What you can do:</strong>
+            🔄 &nbsp;<strong style="color:#FEE2E2;">Refresh the page</strong> — most errors are transient<br>
+            ➕ &nbsp;Click <strong style="color:#FEE2E2;">New Chat</strong> to start a fresh session<br>
+            🌐 &nbsp;Check your internet connection and try again
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+try:
+    if st.session_state.page == "chat":
+        show_chat_page()
+    elif st.session_state.page == "kg":
+        show_knowledge_graph_page(CHUNKS_PATH)
+    else:
+        show_evaluation_page()
+except Exception as _top_level_err:
+    _render_fatal_error(st.session_state.get("page", "unknown"), _top_level_err)
