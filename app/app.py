@@ -7,6 +7,7 @@ import requests
 import html
 import re
 import csv
+import time
 from pathlib import Path
 from dotenv import load_dotenv
 import streamlit as st
@@ -999,6 +1000,7 @@ def run_query(query: str):
             f'<span>{msg}</span></div>',
             unsafe_allow_html=True)
 
+    start_time = time.time()
     retrieval_query = build_retrieval_query(query)
 
     status("Searching knowledge base…")
@@ -1022,10 +1024,11 @@ def run_query(query: str):
     context = build_context(chunks)
     status("Generating answer…")
     answer  = call_llm(query, context)
+    duration = time.time() - start_time
     slot.empty()
     rate_limited = (answer == RATE_LIMIT_ANSWER)
     timed_out    = (answer == TIMEOUT_ANSWER)
-    return chunks, answer, images, rate_limited, timed_out
+    return chunks, answer, images, rate_limited, timed_out, duration
 
 
 # ─── EVAL HELPERS ────────────────────────────────────────────────────────────
@@ -1111,12 +1114,13 @@ def show_chat_page():
     # so images appear immediately on the very first question.
     pending = st.session_state.pop("_pending_query", None)
     if pending:
-        chunks, answer, images, rate_limited, timed_out = run_query(pending)
+        chunks, answer, images, rate_limited, timed_out, duration = run_query(pending)
         st.session_state.messages.append({
             "role": "assistant", "content": answer,
             "sources": chunks, "images": images,
             "rate_limited": rate_limited,
             "timed_out": timed_out,
+            "duration": duration,
         })
         st.rerun()
 
@@ -1394,6 +1398,24 @@ def show_chat_page():
                 if not not_found and msg.get("sources"):
                     render_sources_panel(msg["sources"])
 
+                # ✅ Visual performance badge at the very end
+                duration = msg.get("duration")
+                if duration and not is_error:
+                    st.markdown(f"""
+                    <div style="display: flex; justify-content: flex-end; margin-top: 20px; margin-bottom: -10px;">
+                        <div style="display: flex; align-items: center; gap: 8px; padding: 5px 12px; 
+                                    background: #ffffff; border: 1px solid #E2E8F0; border-radius: 8px;
+                                    box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
+                            <div style="display: flex; align-items: center; gap: 5px;">
+                                <div style="width: 6px; height: 6px; border-radius: 50%; background: #10B981; animation: pulse-dot 2s infinite;"></div>
+                                <span style="font-size: 0.62rem; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.06em;">Processed in</span>
+                            </div>
+                            <div style="width: 1px; height: 12px; background: #E2E8F0;"></div>
+                            <span style="font-size: 0.72rem; color: #0F172A; font-weight: 600; font-family: 'JetBrains Mono', 'Courier New', monospace;">{duration:.2f}s</span>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
                 if not_found:
                     st.markdown("""
                     <div style="margin:0.5rem 0 1rem;max-width:580px;
@@ -1414,12 +1436,13 @@ def show_chat_page():
     query = st.chat_input("Ask anything about psychology…")
     if query:
         st.session_state.messages.append({"role": "user", "content": query})
-        chunks, answer, images, rate_limited, timed_out = run_query(query)
+        chunks, answer, images, rate_limited, timed_out, duration = run_query(query)
         st.session_state.messages.append({
             "role": "assistant", "content": answer,
             "sources": chunks, "images": images,
             "rate_limited": rate_limited,
             "timed_out": timed_out,
+            "duration": duration,
         })
         st.rerun()
 
