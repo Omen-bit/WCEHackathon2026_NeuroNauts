@@ -188,15 +188,15 @@ st.markdown("""
     color-scheme: light only;
 }
 
-/* Ensure native expand button is visible and colored */
+/* Ensure native expand button is visible and colored red */
 [data-testid="collapsedControl"] {
-    color: #4F46E5 !important;
-    background: rgba(79, 70, 229, 0.08) !important;
+    color: #EF4444 !important;
+    background: rgba(239, 68, 68, 0.1) !important;
     border-radius: 0 8px 8px 0 !important;
     z-index: 99999 !important;
 }
 [data-testid="collapsedControl"] svg {
-    fill: #4F46E5 !important;
+    fill: #EF4444 !important;
 }
 
 /* ── Force light mode on main content only (NOT sidebar) ── */
@@ -1470,7 +1470,7 @@ def show_evaluation_page():
 
     c1, c2 = st.columns([1, 2])
     with c1:
-        sample_size = st.slider("Queries to evaluate", 5, len(all_queries), len(all_queries))
+        sample_size = st.slider("Queries to evaluate", 5, len(all_queries), 5)
     with c2:
         st.markdown(
             f"<div style='padding-top:1.8rem;color:var(--text-muted);font-size:0.85rem;'>"
