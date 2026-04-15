@@ -71,7 +71,7 @@ PROJECT_ROOT = _PROJECT_ROOT
 # ✅ REMOVED: IMAGES_DIR — images now served from Cloudinary URLs
 OUTPUT_JSON  = PROJECT_ROOT / "output" / "evaluation_results.json"
 OUTPUT_CSV   = PROJECT_ROOT / "output" / "evaluation_results.csv"
-CHUNKS_PATH  = PROJECT_ROOT / "output" / "psychology2e_chunks.json"
+CHUNKS_PATH  = PROJECT_ROOT / "chunk_for _graph" / "psychology2e_chunks.json"
 
 TOP_K             = 5
 MAX_CONTEXT_CHARS = 4000
