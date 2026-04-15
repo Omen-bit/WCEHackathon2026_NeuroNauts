@@ -454,29 +454,48 @@ section[data-testid="stMain"] {
 }
 
 [data-testid="stChatInput"] {
-    border-radius: 12px !important; border: 1px solid #E2E8F0 !important;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.04) !important;
-    background:#fff !important;
-}
-[data-testid="stChatInput"]:focus-within {
-    border-color: var(--primary) !important;
-    box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.1) !important;
-}
-[data-testid="stChatInput"] textarea {
-    font-size:0.94rem !important; padding:14px 22px !important;
-    color: #0F172A !important;
+    border-radius: 28px !important; 
+    border: 1px solid #E2E8F0 !important;
     background: #ffffff !important;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.03), 0 4px 6px -2px rgba(0, 0, 0, 0.01) !important;
+    padding: 4px 10px !important;
+    margin-bottom: 24px !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+[data-testid="stChatInput"]:focus-within {
+    border-color: #4F46E5 !important;
+    box-shadow: 0 20px 25px -5px rgba(79, 70, 229, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.02) !important;
+    transform: translateY(-2px);
+}
+
+[data-testid="stChatInput"] textarea {
+    font-size: 0.95rem !important; 
+    padding: 12px 18px !important;
+    color: #0F172A !important;
+    background: transparent !important;
+    font-weight: 500 !important;
+}
+
+/* Style the send button icon specifically if possible */
+[data-testid="stChatInput"] button {
+    background-color: transparent !important;
+    color: #4F46E5 !important;
+    transition: transform 0.2s ease !important;
+}
+[data-testid="stChatInput"] button:hover {
+    transform: scale(1.1) rotate(-5deg);
 }
 
 /* Quick-start suggestion buttons */
 div[data-testid="stHorizontalBlock"] .stButton > button {
-    background:#ffffff !important; border:1px solid #E2E8F0 !important;
-    border-radius:10px !important; color:#0F172A !important;
-    font-size:0.85rem !important; font-weight:500 !important;
-    padding:13px 16px !important; white-space:normal !important;
-    height:auto !important; min-height:58px !important;
-    line-height:1.45 !important; box-shadow:0 1px 3px rgba(0,0,0,0.02) !important;
-    transition:all 0.18s !important; text-align:left !important;
+    background: #ffffff !important; border: 1px solid #E2E8F0 !important;
+    border-radius: 14px !important; color: #1E293B !important;
+    font-size: 0.8rem !important; font-weight: 600 !important;
+    padding: 10px 12px !important; white-space: normal !important;
+    height: auto !important; min-height: 48px !important;
+    line-height: 1.35 !important; box-shadow: 0 1px 2px rgba(0,0,0,0.03) !important;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important; text-align: center !important;
 }
 div[data-testid="stHorizontalBlock"] .stButton > button:hover {
     border-color:var(--primary) !important; background:#F8FAFC !important;
@@ -529,7 +548,8 @@ div[data-testid="stHorizontalBlock"] .stButton > button:hover {
     .src-card { padding: 10px !important; }
     .src-section { font-size: 0.72rem !important; }
     .src-preview { font-size: 0.67rem !important; }
-    [data-testid="stChatInput"] textarea { font-size: 0.9rem !important; padding: 12px 16px !important; min-height: 48px !important; }
+    [data-testid="stChatInput"] { border-radius: 28px !important; padding: 2px 4px !important; }
+    [data-testid="stChatInput"] textarea { font-size: 0.9rem !important; padding: 10px 14px !important; min-height: 45px !important; font-weight: 500 !important; }
     div[data-testid="stHorizontalBlock"] .stButton > button { font-size: 0.8rem !important; padding: 11px 12px !important; min-height: 54px !important; }
     .status-pill { font-size: 0.78rem !important; padding: 7px 13px !important; }
     .metric-value { font-size: 1.5rem !important; }
@@ -854,7 +874,14 @@ def get_images(chunks: list) -> list:
 
 _IMG_CARD_CSS = """
 <style>
-.custom-gallery { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
+.custom-gallery { 
+    display: flex; gap: 12px; flex-wrap: nowrap; margin-top: 10px; 
+    overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 14px;
+}
+.custom-gallery::-webkit-scrollbar { height: 5px; }
+.custom-gallery::-webkit-scrollbar-track { background: #f8fafc; border-radius: 10px; }
+.custom-gallery::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+.custom-gallery::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
 .custom-thumb-label { cursor: pointer; flex-shrink: 0; display: block; width: 200px; height: 130px; }
 .custom-thumb { 
     width: 200px !important; height: 130px !important; object-fit: cover !important; 
@@ -1010,15 +1037,17 @@ def run_query(query: str):
         slot.empty()
         print(f"[Zilliz] Error: {type(e).__name__}: {e}")
         err_str = str(e).lower()
+        duration = time.time() - start_time
         if "auth" in err_str or "unauthorized" in err_str or "token" in err_str or "401" in err_str:
-            return [], AUTH_ERROR_ANSWER, [], False, False
-        return [], DB_ERROR_ANSWER, [], False, False
+            return [], AUTH_ERROR_ANSWER, [], False, False, duration
+        return [], DB_ERROR_ANSWER, [], False, False, duration
         
     images  = get_images(chunks)   # ✅ now returns Cloudinary URLs
 
     if not chunks:
         slot.empty()
-        return chunks, "Not found in the provided textbook.", images, False, False
+        duration = time.time() - start_time
+        return chunks, "Not found in the provided textbook.", images, False, False, duration
 
     status("Building context…")
     context = build_context(chunks)
@@ -1126,39 +1155,48 @@ def show_chat_page():
 
     if not st.session_state.messages:
         st.markdown("""
-        <div style="text-align:center;padding:5rem 0 3rem;">
-            <div style="display:inline-flex;align-items:center;justify-content:center;
-                        width:80px;height:80px;border-radius:16px;background:var(--primary);
-                        color:white;box-shadow:0 10px 25px rgba(79,70,229,0.2);">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" style="width:40px;height:40px;">
+        <div style="text-align:center; padding: 3rem 0 1.5rem;">
+            <div style="display:inline-flex; align-items:center; justify-content:center;
+                        width:72px; height:72px; border-radius:20px; 
+                        background: linear-gradient(135deg, #4F46E5 0%, #312E81 100%);
+                        color:white; box-shadow:0 10px 30px rgba(79,70,229,0.3);">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" style="width:34px; height:34px;">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h10.5a2.25 2.25 0 002.25-2.25V6.75a2.25 2.25 0 00-2.25-2.25H6.75A2.25 2.25 0 004.5 6.75v10.5a2.25 2.25 0 002.25 2.25zm.75-12h9v9h-9v-9z" />
                 </svg>
             </div>
-            <h1 style="margin:1.5rem 0 0.5rem;font-size:2.2rem;font-weight:700;
-                       color:var(--text-main);letter-spacing:-0.02em;">
+            <h1 style="margin: 1.2rem 0 0.5rem; font-size: 1.8rem; font-weight: 800;
+                       color: #0F172A; letter-spacing: -0.03em;">
                 Ask anything about Psychology
             </h1>
-            <p style="color:var(--text-muted);font-size:0.95rem;margin:0;">
-                Powered by OpenStax Psychology 2e &nbsp;·&nbsp; Hybrid RAG
+            <p style="color: #64748B; font-size: 0.88rem; font-weight: 500;">
+                Powered by OpenStax Psychology 2e · Hybrid Retrieval System
             </p>
-        </div>
-        <div style="max-width:620px;margin:0 auto 1rem;text-align:center;">
-            <span style="font-size:0.7rem;font-weight:600;color:var(--text-muted);
-                         text-transform:uppercase;letter-spacing:0.05em;">Quick starts</span>
         </div>
         """, unsafe_allow_html=True)
 
-        st.markdown('<div style="max-width:640px;margin:0 auto;">', unsafe_allow_html=True)
-        for i in range(0, len(SUGGESTIONS), 2):
-            pair = SUGGESTIONS[i:i+2]
-            cols = st.columns(len(pair), gap="small")
-            for col, (emo, label, full_q) in zip(cols, pair):
-                k = f"chip_{i}_{re.sub(r'[^a-z0-9]','_',full_q[:12].lower())}"
-                if col.button(f"{emo} {label}", key=k, use_container_width=True):
-                    st.session_state.messages.append({"role":"user","content":full_q})
-                    st.session_state["_pending_query"] = full_q
-                    st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown("""
+        <div style="max-width: 800px; margin: 0 auto 1.2rem; text-align: center;">
+            <div style="display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 20px;">
+                <div style="height: 1px; width: 30px; background: #E2E8F0;"></div>
+                <span style="font-size: 0.65rem; font-weight: 700; color: #94A3B8;
+                             text-transform: uppercase; letter-spacing: 0.1em;">Quick Start Suggestions</span>
+                <div style="height: 1px; width: 30px; background: #E2E8F0;"></div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # 3-Column Grid for efficiency
+        grid_col1, grid_col2, grid_col3 = st.columns([1, 6, 1])
+        with grid_col2:
+            for i in range(0, len(SUGGESTIONS), 3):
+                row_items = SUGGESTIONS[i:i+3]
+                cols = st.columns(len(row_items), gap="small")
+                for col, (emo, label, full_q) in zip(cols, row_items):
+                    k = f"chip_{i}_{re.sub(r'[^a-z0-9]','_',full_q[:12].lower())}"
+                    if col.button(f"{emo} {label}", key=k, use_container_width=True):
+                        st.session_state.messages.append({"role":"user","content":full_q})
+                        st.session_state["_pending_query"] = full_q
+                        st.rerun()
         return
 
     for idx, msg in enumerate(st.session_state.messages):
@@ -1380,25 +1418,51 @@ def show_chat_page():
                 </div>
                 """, unsafe_allow_html=True)
             else:
-                formatted = format_answer_html(msg['content'])
-                st.markdown(f"""
-                <div class="assistant-wrap">
-                    <div class="assistant-avatar">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h10.5a2.25 2.25 0 002.25-2.25V6.75a2.25 2.25 0 00-2.25-2.25H6.75A2.25 2.25 0 004.5 6.75v10.5a2.25 2.25 0 002.25 2.25zm.75-12h9v9h-9v-9z" />
-                        </svg>
-                    </div>
-                    <div class="assistant-text">{formatted}</div>
-                </div>""", unsafe_allow_html=True)
+                # --- Fix: Avoid redundant "Not found" message bubble ---
+                display_content = msg['content']
+                if not_found:
+                    prefix = "Not found in the provided textbook."
+                    if display_content.lower().startswith(prefix.lower()):
+                        display_content = display_content[len(prefix):].strip()
+                
+                # Only show bubble if there's actual content left
+                if display_content:
+                    formatted = format_answer_html(display_content)
+                    st.markdown(f"""
+                    <div class="assistant-wrap">
+                        <div class="assistant-avatar">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h10.5a2.25 2.25 0 002.25-2.25V6.75a2.25 2.25 0 00-2.25-2.25H6.75A2.25 2.25 0 004.5 6.75v10.5a2.25 2.25 0 002.25 2.25zm.75-12h9v9h-9v-9z" />
+                            </svg>
+                        </div>
+                        <div class="assistant-text">{formatted}</div>
+                    </div>""", unsafe_allow_html=True)
 
-                # ✅ Images render from Cloudinary URLs
+                # ✅ Images render from Cloudinary URLs (only if found)
                 if not not_found and msg.get("images"):
                     render_image_row(msg["images"], msg_index=idx)
 
+                # ✅ Sources panel (only if found)
                 if not not_found and msg.get("sources"):
                     render_sources_panel(msg["sources"])
 
-                # ✅ Visual performance badge at the very end
+                # ✅ Not Found card
+                if not_found:
+                    st.markdown("""
+                    <div style="margin:0.5rem 0 1rem;max-width:580px;
+                                padding:20px 24px;background:#FAFAFA;border-radius:10px;
+                                border:1px solid #E2E8F0;">
+                        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+                            <span style="font-size:1.1rem;">🔍</span>
+                            <span style="font-size:0.9rem;font-weight:600;color:#0F172A;">Not found in the textbook</span>
+                        </div>
+                        <p style="font-size:0.82rem;color:#64748B;margin:0;line-height:1.6;">
+                            This topic doesn't appear in the OpenStax Psychology 2e textbook content we have indexed.
+                            Try rephrasing your question or asking about a related psychology concept.
+                        </p>
+                    </div>""", unsafe_allow_html=True)
+
+                # ✅ Performance badge at the VERY end
                 duration = msg.get("duration")
                 if duration and not is_error:
                     st.markdown(f"""
@@ -1416,20 +1480,6 @@ def show_chat_page():
                     </div>
                     """, unsafe_allow_html=True)
 
-                if not_found:
-                    st.markdown("""
-                    <div style="margin:0.5rem 0 1rem;max-width:580px;
-                                padding:20px 24px;background:#FAFAFA;border-radius:10px;
-                                border:1px solid #E2E8F0;">
-                        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
-                            <span style="font-size:1.1rem;">🔍</span>
-                            <span style="font-size:0.9rem;font-weight:600;color:#0F172A;">Not found in the textbook</span>
-                        </div>
-                        <p style="font-size:0.82rem;color:#64748B;margin:0;line-height:1.6;">
-                            This topic doesn't appear in the OpenStax Psychology 2e textbook content we have indexed.
-                            Try rephrasing your question or asking about a related psychology concept.
-                        </p>
-                    </div>""", unsafe_allow_html=True)
 
             st.markdown("<hr class='turn-divider'>", unsafe_allow_html=True)
 

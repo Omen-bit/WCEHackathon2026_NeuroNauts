@@ -144,9 +144,60 @@ def _build_graph_data(chunks_path: Path) -> dict:
     return {"nodes": nodes, "links": links}
 
 def show_knowledge_graph_page(chunks_path: Path):
+    # ── Mobile-Optimized CSS ──────────────────────────────────────────────────
+    st.markdown("""
+    <style>
+        /* Force Streamlit columns to stack cleanly on mobile */
+        @media (max-width: 768px) {
+            [data-testid="column"] {
+                flex: 1 1 100% !important;
+                min-width: 100% !important;
+                padding: 0 !important;
+                margin-bottom: 12px;
+            }
+        }
+
+        /* Responsive Stats Grid */
+        .kg-stat-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        @media (max-width: 840px) {
+            .kg-stat-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+        @media (max-width: 580px) {
+            .kg-stat-grid { grid-template-columns: 1fr; }
+        }
+
+        .kg-card {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 16px;
+            padding: 24px; /* Accurate and equal padding */
+            text-align: center;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.03);
+            transition: transform 0.2s;
+        }
+        .kg-card:hover { transform: translateY(-2px); border-color: #CBD5E1; }
+
+        /* Button Styling for Quick Jump */
+        .stButton > button {
+            border-radius: 12px !important;
+            padding: 10px 16px !important;
+            font-weight: 600 !important;
+            border: 1px solid #E2E8F0 !important;
+            transition: all 0.2s ease !important;
+            background: white !important;
+            font-size: 0.82rem !important;
+        }
+    </style>
+    """, unsafe_allow_html=True)
 
     st.markdown("""
-    <div style="padding:0.5rem 0 1.5rem;">
+    <div style="padding:0.5rem 0 1.2rem;">
         <div style="display:flex;align-items:center;gap:16px;margin-bottom:0.5rem;">
             <div style="width:48px;height:48px;border-radius:12px;flex-shrink:0;
                         background:linear-gradient(135deg, #4F46E5 0%, #312E81 100%);color:white;
@@ -184,37 +235,42 @@ def show_knowledge_graph_page(chunks_path: Path):
     n_sections = len([n for n in graph["nodes"] if n["type"] == "section"])
     n_links    = len([l for l in graph["links"] if l["type"] == "ch_sec"])
 
-    # ── Stats Cards (Light Mode) ─────────────
-    c1, c2, c3 = st.columns(3)
-    card_style = """
-        background: linear-gradient(145deg, #ffffff, #f8fafc); border: 1px solid #e2e8f0;
-        border-radius: 12px; padding: 16px 20px; text-align: center;
-        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
-    """
-    with c1: st.markdown(f'<div style="{card_style}"><div style="font-size:2rem;font-weight:800;color:#4F46E5;line-height:1;">16</div><div style="font-size:0.75rem;color:#64748B;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;margin-top:6px;">Total Chapters</div></div>', unsafe_allow_html=True)
-    with c2: st.markdown(f'<div style="{card_style}"><div style="font-size:2rem;font-weight:800;color:#059669;line-height:1;">{n_sections}</div><div style="font-size:0.75rem;color:#64748B;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;margin-top:6px;">Sections Mapped</div></div>', unsafe_allow_html=True)
-    with c3: st.markdown(f'<div style="{card_style}"><div style="font-size:2rem;font-weight:800;color:#D97706;line-height:1;">{n_links}</div><div style="font-size:0.75rem;color:#64748B;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;margin-top:6px;">Connections</div></div>', unsafe_allow_html=True)
+    # ── Optimized Stats Grid ─────────────────
+    st.markdown(f"""
+    <div class="kg-stat-grid">
+        <div class="kg-card">
+            <div style="font-size:1.8rem;font-weight:800;color:#4F46E5;line-height:1;">16</div>
+            <div style="font-size:0.7rem;color:#64748B;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;margin-top:8px;">Total Chapters</div>
+        </div>
+        <div class="kg-card">
+            <div style="font-size:1.8rem;font-weight:800;color:#059669;line-height:1;">{n_sections}</div>
+            <div style="font-size:0.7rem;color:#64748B;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;margin-top:8px;">Sections Mapped</div>
+        </div>
+        <div class="kg-card">
+            <div style="font-size:1.8rem;font-weight:800;color:#D97706;line-height:1;">{n_links}</div>
+            <div style="font-size:0.7rem;color:#64748B;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;margin-top:8px;">Connections</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
-    st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
-
-    # ── Legend (Light Mode) ───────────────────────────────────────────────────────
+    # ── Legend ───────────────────────────────────────────────────────────────
     st.markdown("""
-    <div style="display:flex;gap:24px;align-items:center;
-                font-size:0.75rem;color:#64748B;margin-bottom:12px;
-                flex-wrap:wrap; font-weight: 500;">
+    <div style="display:flex;gap:16px;align-items:center;
+                font-size:0.72rem;color:#64748B;margin-bottom:14px;
+                flex-wrap:wrap; font-weight: 500; background: #F8FAFC; 
+                padding: 10px 14px; border-radius: 10px; border: 1px dashed #E2E8F0;">
         <span style="display:flex;align-items:center;gap:6px;">
-            <svg width="14" height="14"><circle cx="7" cy="7" r="6" fill="#4F46E5" stroke="#fff" stroke-width="1.5"/></svg>
+            <svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="#4F46E5" stroke="#fff" stroke-width="1.2"/></svg>
             Chapter Node
         </span>
         <span style="display:flex;align-items:center;gap:6px;">
             <svg width="10" height="10"><circle cx="5" cy="5" r="4" fill="#94A3B8"/></svg>
-            Section Node (Area = Volume of text)
+            Section Node
         </span>
         <span style="display:flex;align-items:center;gap:6px;">
-            <svg width="20" height="4"><line x1="0" y1="2" x2="20" y2="2" stroke="#CBD5E1" stroke-width="1.5" stroke-dasharray="3,3"/></svg>
+            <svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="#CBD5E1" stroke-width="1.5" stroke-dasharray="3,2"/></svg>
             Semantic Spine
         </span>
-        <span>🖱 Click any node to ask questions about it</span>
     </div>
     """, unsafe_allow_html=True)
 
@@ -225,6 +281,7 @@ def show_knowledge_graph_page(chunks_path: Path):
 <html>
 <head>
 <meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0"/>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
@@ -232,68 +289,73 @@ def show_knowledge_graph_page(chunks_path: Path):
 body{{ background: transparent; font-family: 'Inter', system-ui, sans-serif; overflow: hidden; }}
 
 #gc{{
-    width: 100%; height: 750px; position: relative;
+    width: 100%; height: 600px; position: relative;
     border: 1px solid #E2E8F0; border-radius: 16px;
-    background-color: #F8FAFC; /* Clean white/light gray background */
-    background-image: radial-gradient(#CBD5E1 1px, transparent 1px);
-    background-size: 28px 28px; overflow: hidden;
+    background-color: #FDFDFF;
+    background-image: radial-gradient(#E2E8F0 1px, transparent 1px);
+    background-size: 24px 24px; overflow: hidden;
 }}
 
 svg{{width:100%;height:100%;cursor:grab;}}
 svg:active{{cursor:grabbing;}}
 
 /* Links */
-.link-spine{{fill:none; stroke:#CBD5E1; stroke-width:1.5; stroke-dasharray:6,6; opacity:0.8; transition: opacity 0.3s;}}
-.link-ch-sec{{fill:none; stroke-width:1.5; opacity:0.4; transition: all 0.3s ease;}}
+.link-spine{{fill:none; stroke:#CBD5E1; stroke-width:1.5; stroke-dasharray:6,6; opacity:0.6;}}
+.link-ch-sec{{fill:none; stroke-width:1.2; opacity:0.35;}}
 
-.dimmed {{ opacity: 0.08 !important; filter: grayscale(100%); transition: all 0.3s ease; }}
-.highlighted {{ opacity: 1 !important; stroke-width: 3px !important; transition: all 0.3s ease; }}
+.dimmed {{ opacity: 0.1 !important; filter: grayscale(100%); transition: all 0.3s ease; }}
+.highlighted {{ opacity: 1 !important; stroke-width: 2.5px !important; transition: all 0.3s ease; }}
 
 /* Nodes */
-.ch-node circle{{ stroke-width: 3; stroke: #fff; cursor: pointer; filter: drop-shadow(0 4px 12px rgba(0,0,0,0.1)); transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }}
-.ch-node:hover circle{{ stroke-width: 5; transform: scale(1.1); filter: drop-shadow(0 8px 20px rgba(0,0,0,0.15)); }}
-.ch-node text{{ font-size: 14px; font-weight: 800; fill: white; text-anchor: middle; dominant-baseline: central; pointer-events: none; }}
+.ch-node circle{{ stroke-width: 2.5; stroke: #fff; cursor: pointer; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.08)); transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }}
+.ch-node:hover circle{{ stroke-width: 4; transform: scale(1.1); filter: drop-shadow(0 8px 20px rgba(0,0,0,0.12)); }}
+.ch-node text{{ font-size: 13px; font-weight: 800; fill: white; text-anchor: middle; dominant-baseline: central; pointer-events: none; }}
 
-.sec-node circle{{ stroke-width: 1.5; stroke: rgba(0,0,0,0.05); cursor: pointer; transition: all 0.2s ease; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.05)); }}
-.sec-node:hover circle{{ stroke-width: 3; stroke: #fff; transform: scale(1.2); filter: drop-shadow(0 4px 8px rgba(0,0,0,0.15));}}
+.sec-node circle{{ stroke-width: 1.2; stroke: rgba(0,0,0,0.05); cursor: pointer; transition: all 0.2s ease; }}
+.sec-node:hover circle{{ stroke-width: 2.5; stroke: #fff; transform: scale(1.2); }}
 
-/* Info-Rich Tooltip Card (Light Mode) */
-#tt{{
-    position: absolute; background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(12px); border: 1px solid #E2E8F0;
-    border-radius: 12px; padding: 18px; color: #0F172A; pointer-events: none; 
-    opacity: 0; transform: translateY(10px); transition: opacity 0.2s ease, transform 0.2s ease; 
-    max-width: 300px; box-shadow: 0 20px 40px -10px rgba(0,0,0,0.15); z-index: 100;
+/* Tooltip (Fixed for Mobile) */
+#tt {{
+    position: absolute; background: rgba(255, 255, 255, 0.98); backdrop-filter: blur(8px); border: 1px solid #E2E8F0;
+    border-radius: 12px; padding: 16px; color: #0F172A; pointer-events: none; 
+    opacity: 0; transform: translateY(10px); transition: all 0.2s ease; 
+    width: 260px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); z-index: 100;
 }}
 #tt.visible {{ opacity: 1; transform: translateY(0); }}
 
-.tt-header {{ font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: #64748B; margin-bottom: 8px; }}
-.tt-title {{ font-weight: 800; font-size: 16px; margin-bottom: 14px; line-height: 1.3; color: #0F172A; }}
-.tt-tags {{ display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }}
-.tt-tag {{ 
-    background: #F1F5F9; border: 1px solid #E2E8F0;
-    padding: 5px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; display: flex; align-items: center; gap: 5px; color: #334155;
-}}
-.tt-desc {{
-    font-size: 12.5px; color: #475569; line-height: 1.5; margin-top: 14px; 
-    padding-top: 14px; border-top: 1px solid #E2E8F0; font-weight: 400;
+@media (max-width: 600px) {{
+    #tt {{
+        position: fixed; bottom: 20px; left: 20px !important; right: 20px !important;
+        top: auto !important; width: auto; max-width: none;
+    }}
 }}
 
-/* Controls (Light Mode) */
-#ctrls{{position:absolute;bottom:24px;right:24px;display:flex;flex-direction:column;gap:10px;}}
-.cb{{
-    background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(4px); border: 1px solid #E2E8F0;
-    border-radius: 8px; width: 38px; height: 38px; display: flex; align-items: center; justify-content: center;
-    cursor: pointer; font-size: 18px; color: #475569; box-shadow: 0 4px 12px rgba(0,0,0,0.05); transition: all 0.2s;
+.tt-header {{ font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: #64748B; margin-bottom: 6px; }}
+.tt-title {{ font-weight: 700; font-size: 15px; margin-bottom: 12px; line-height: 1.3; color: #0F172A; }}
+.tt-tags {{ display: flex; gap: 6px; flex-wrap: wrap; }}
+.tt-tag {{ 
+    background: #F1F5F9; border: 1px solid #E2E8F0;
+    padding: 4px 8px; border-radius: 6px; font-size: 10px; font-weight: 600; display: flex; align-items: center; gap: 4px; color: #475569;
 }}
-.cb:hover{{ background: #4F46E5; color: white; border-color:#4F46E5; transform: scale(1.05); box-shadow: 0 6px 16px rgba(79,70,229,0.2); }}
+.tt-desc {{
+    font-size: 11.5px; color: #64748B; line-height: 1.4; margin-top: 12px; 
+    padding-top: 12px; border-top: 1px solid #F1F5F9;
+}}
+
+/* Controls */
+#ctrls{{position:absolute;top:20px;right:20px;display:flex;flex-direction:column;gap:8px;}}
+.cb{{
+    background: #fff; border: 1px solid #E2E8F0;
+    border-radius: 10px; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;
+    cursor: pointer; font-size: 20px; color: #64748B; box-shadow: 0 2px 4px rgba(0,0,0,0.05); transition: all 0.2s;
+}}
+.cb:hover{{ background: #F8FAFC; color: #4F46E5; border-color: #4F46E5; }}
 
 </style>
 </head>
 <body>
 <div id="gc">
-  <svg id="svg">
-    <defs id="svg-defs"></defs>
-  </svg>
+  <svg id="svg"><defs id="svg-defs"></defs></svg>
   <div id="tt">
     <div class="tt-header" id="tt-h"></div>
     <div class="tt-title" id="tt-t"></div>
@@ -312,50 +374,35 @@ svg:active{{cursor:grabbing;}}
 const G = {graph_json};
 const gc = document.getElementById('gc');
 const W  = gc.clientWidth || 960;
-const H  = gc.clientHeight || 750;
+const H  = gc.clientHeight || 600;
 
 const svg = d3.select('#svg');
 const defs = d3.select('#svg-defs');
 const g = svg.append('g');
 
-// Create dynamic radial gradients for chapter nodes
-const colors = [...new Set(G.nodes.map(n => n.colour))];
-colors.forEach(c => {{
-    const grad = defs.append('radialGradient')
-        .attr('id', 'grad-' + c.replace('#',''))
-        .attr('cx', '30%').attr('cy', '30%').attr('r', '70%');
-    grad.append('stop').attr('offset', '0%').attr('stop-color', d3.color(c).brighter(1));
-    grad.append('stop').attr('offset', '100%').attr('stop-color', c);
-}});
-
-// Zoom physics
 const zoom = d3.zoom().scaleExtent([0.15, 5]).on('zoom', e => g.attr('transform', e.transform));
 svg.call(zoom);
 function zi(){{svg.transition().duration(400).call(zoom.scaleBy, 1.4);}}
 function zo(){{svg.transition().duration(400).call(zoom.scaleBy, 0.7);}}
-function zr(){{svg.transition().duration(600).ease(d3.easeCubicOut).call(zoom.transform, d3.zoomIdentity.translate(W/2,H/2).scale(0.85));}}
+function zr(){{svg.transition().duration(600).ease(d3.easeCubicOut).call(zoom.transform, d3.zoomIdentity.translate(W/2,H/2).scale(0.8));}}
 
-// Build Adjacency List for fast neighbor lookups
 const linkedByIndex = {{}};
 G.links.forEach(d => {{
     linkedByIndex[`${{d.source}},${{d.target}}`] = true;
     linkedByIndex[`${{d.target}},${{d.source}}`] = true;
 }});
-function isConnected(a, b) {{
-    return linkedByIndex[`${{a.id}},${{b.id}}`] || a.id === b.id;
-}}
+function isConnected(a, b) {{ return linkedByIndex[`${{a.id}},${{b.id}}`] || a.id === b.id; }}
 
 const spineLinks = G.links.filter(l => l.type === 'spine');
 const secLinks   = G.links.filter(l => l.type === 'ch_sec');
 
-// Physics
 const sim = d3.forceSimulation(G.nodes)
     .force('link', d3.forceLink(G.links).id(d=>d.id).distance(l => l.distance || 110).strength(l => l.strength || 0.6))
     .force('charge', d3.forceManyBody().strength(d => d.type === 'chapter' ? -800 : -150))
     .force('center', d3.forceCenter(0, 0).strength(0.05))
-    .force('collide', d3.forceCollide().radius(d => d.radius + 15).iterations(4))
-    .force('radial', d3.forceRadial(d => d.type === 'chapter' ? 260 : 0, 0, 0).strength(d => d.type === 'chapter' ? 0.9 : 0))
-    .alphaDecay(0.015);
+    .force('collide', d3.forceCollide().radius(d => d.radius + 15))
+    .force('radial', d3.forceRadial(d => d.type === 'chapter' ? 240 : 0, 0, 0).strength(d => d.type === 'chapter' ? 0.8 : 0))
+    .alphaDecay(0.02);
 
 const spineLink = g.append('g').selectAll('path').data(spineLinks).join('path').attr('class','link-spine');
 const secLink = g.append('g').selectAll('path').data(secLinks).join('path').attr('class','link-ch-sec').attr('stroke', d => d.colour);
@@ -370,14 +417,9 @@ const node = g.append('g').selectAll('g').data(G.nodes).join('g')
     .on('mouseover', onOver)
     .on('mouseout',  onOut);
 
-// Apply gradients only to Chapter Nodes
-node.append('circle')
-    .attr('r', d => d.radius)
-    .attr('fill', d => d.type === 'chapter' ? `url(#grad-${{d.colour.replace('#','')}})` : d.colour);
-
+node.append('circle').attr('r', d => d.radius).attr('fill', d => d.colour);
 node.filter(d => d.type==='chapter').append('text').text(d => d.num);
 
-// DOM elements for TT
 const tt = document.getElementById('tt');
 const ttH = document.getElementById('tt-h');
 const ttT = document.getElementById('tt-t');
@@ -395,10 +437,10 @@ function onOver(event, d) {{
     
     let tagsHTML = "";
     if (d.type === 'chapter') {{
-        tagsHTML += `<div class="tt-tag" style="color:${{d.colour}}; border-color:${{d.colour}}40; background:${{d.colour}}10;">📚 ${{d.sec_count}} Sections</div>`;
+        tagsHTML += `<div class="tt-tag" style="color:${{d.colour}};">📚 ${{d.sec_count}} Sections</div>`;
         tagsHTML += `<div class="tt-tag">🧩 ${{d.total_chunks}} Chunks</div>`;
     }} else {{
-        tagsHTML += `<div class="tt-tag">⏱️ ~${{d.est_time}} min read</div>`;
+        tagsHTML += `<div class="tt-tag">⏱️ ${{d.est_time}}m </div>`;
         tagsHTML += `<div class="tt-tag">🧩 ${{d.chunk_count}} Chunks</div>`;
     }}
     ttTags.innerHTML = tagsHTML;
@@ -419,18 +461,16 @@ gc.addEventListener('mousemove', e => {{ if(tt.classList.contains('visible')) mo
 
 function moveTT(e) {{
     const r = gc.getBoundingClientRect();
+    if (window.innerWidth < 600) return; // Keep fixed bottom on mobile
     let x = e.clientX - r.left + 24;
     let y = e.clientY - r.top + 24;
-    if (x + 320 > W) x = e.clientX - r.left - 320;
-    if (y + 200 > H) y = e.clientY - r.top - 200;
+    if (x + 280 > W) x = e.clientX - r.left - 280;
+    if (y + 180 > H) y = e.clientY - r.top - 180;
     tt.style.left = x + 'px'; tt.style.top = y + 'px';
 }}
 
 function onClick(event, d) {{
     event.stopPropagation();
-    d3.select(this).select('circle')
-      .transition().duration(100).attr('r', d.radius * 1.4)
-      .transition().duration(300).ease(d3.easeBounce).attr('r', d.radius);
     window.parent.postMessage({{type:'streamlit:setComponentValue',value:d.query}}, '*');
 }}
 
@@ -445,14 +485,14 @@ sim.on('tick', () => {{
     node.attr('transform', d => `translate(${{d.x}},${{d.y}})`);
 }});
 
-svg.call(zoom.transform, d3.zoomIdentity.translate(W/2,H/2).scale(0.85));
+svg.call(zoom.transform, d3.zoomIdentity.translate(W/2,H/2).scale(0.8));
 </script>
 </body>
 </html>"""
 
-    components.html(html_code, height=770, scrolling=False)
+    components.html(html_code, height=620, scrolling=False)
 
-    # ── Quick Explore Grid (Light Mode) ───────────────────────────────────────────
+    # ── Quick Explore Grid ────────────────────────────────────────────────────
     st.markdown("<div style='height:32px;'></div>", unsafe_allow_html=True)
     st.markdown("""
     <div style="display:flex; align-items:center; gap:8px; margin-bottom:16px;">
@@ -466,20 +506,19 @@ svg.call(zoom.transform, d3.zoomIdentity.translate(W/2,H/2).scale(0.85));
 
     chapters_sorted = sorted([n for n in graph["nodes"] if n["type"] == "chapter"], key=lambda x: x["num"])
 
+    # Responsive Grid for buttons via Streamlit columns (CSS handles stacking)
     cols_per_row = 4
     for i in range(0, len(chapters_sorted), cols_per_row):
         row  = chapters_sorted[i:i + cols_per_row]
-        cols = st.columns(cols_per_row, gap="medium")
+        cols = st.columns(cols_per_row, gap="small")
         for col, ch in zip(cols, row):
             with col:
+                # Custom block wrapper styling
                 short = ch.get("short", ch["label"])
-                short = short[:24] + "…" if len(short) > 24 else short
+                short = short[:25] + "…" if len(short) > 25 else short
                 
-                st.markdown(f"""
-                <div style="height:4px; width:100%; background:{ch['colour']}; 
-                            border-radius:4px 4px 0 0; margin-bottom:-12px; 
-                            position:relative; z-index:1;">
-                </div>""", unsafe_allow_html=True)
+                # Visual accent
+                st.markdown(f'<div style="height:3px; width:100%; background:{ch["colour"]}; border-radius:3px 3px 0 0; margin-bottom:-8px; position:relative; z-index:1;"></div>', unsafe_allow_html=True)
                 
                 if st.button(f"Ch. {ch['num']} : {short}", key=f"kg_ch_{ch['num']}", use_container_width=True):
                     st.session_state["page"] = "chat"
@@ -489,7 +528,7 @@ svg.call(zoom.transform, d3.zoomIdentity.translate(W/2,H/2).scale(0.85));
                     st.session_state["_pending_query"] = ch["query"]
                     st.rerun()
         
-        # Pad empty columns for the grid layout
+        # Balance empty columns
         if len(row) < cols_per_row:
             for _ in range(cols_per_row - len(row)):
                 cols[len(row) + _].empty()
