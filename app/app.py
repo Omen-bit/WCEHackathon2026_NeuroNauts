@@ -253,6 +253,14 @@ section[data-testid="stMain"],
         color: #0F172A !important;
         border-color: #E2E8F0 !important;
     }
+    [data-testid="stChatInput"] textarea::placeholder {
+        color: #64748B !important;
+        opacity: 1 !important;
+    }
+    [data-testid="stBottom"] {
+        background-color: #ffffff !important;
+        border-top: 1px solid #E2E8F0 !important;
+    }
     /* Source cards */
     .src-card { background: #ffffff !important; }
     .src-section { color: #0F172A !important; }
@@ -475,6 +483,16 @@ section[data-testid="stMain"] {
     color: #0F172A !important;
     background: transparent !important;
     font-weight: 500 !important;
+}
+
+[data-testid="stChatInput"] textarea::placeholder {
+    color: #64748B !important;
+    opacity: 1 !important;
+}
+
+[data-testid="stBottom"] {
+    background-color: #ffffff !important;
+    border-top: 1px solid #E2E8F0 !important;
 }
 
 /* Style the send button icon specifically if possible */
