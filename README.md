@@ -36,13 +36,13 @@ Unlike standard LLMs which frequently hallucinate or confidently invent incorrec
 
 | Feature | Description |
 | :--- | :--- |
-| **☁️ Cloud-Native Ecosystem** | Built for production performance using **Groq** (Llama-3.3-70b-versatile), **Zilliz Cloud**, and **Cloudinary** CDN image hosting. |
-| **🔍 High-Fidelity Retrieval** | Employs `Nomic-Embed-Text` on Zilliz Cloud with strict relevance thresholds (Cosine Similarity > 0.3) ensuring zero-hallucinations. |
-| **🛡️ Resilient API Architecture** | Wraps all downstream services (Database, CDN, LLM) in robust exception handling logic, rendering premium UI fallback banners for 401 Auth errors, 429 Rate Limits, and 500 Timeouts. |
-| **📂 Section-Aware Chunking** | Intelligent data ingestion via **Docling**. Chunks never bleed across sections/chapters, ensuring perfect context integrity. |
-| **🖼️ Intelligent Image Lightbox** | Using **PyMuPDF**, the agent identifies and securely extracts charts/diagrams, serving them from Cloudinary alongside the LLM's text. |
-| **🧠 Context-Aware Memory** | Handles complex follow-up questions (e.g., "what are parts of it?") by intelligently resolving pronouns against conversation history. |
-| **📊 Headless Eval Suite** | Includes `headless_eval.py` to continuously measure **Faithfulness** and **Answer Relevancy** programmatically across the data pipeline. |
+| **🏥 PsychLab Clinical Case Simulator** | Interactive patient persona consultations for clinical psychology cases with automated OpenStax & DSM-5 diagnostic rubric grading. |
+| **🎯 Active Recall Study Hub** | Adaptive AP & College-level quiz generation with distractor explanations, active recall tracking, and interactive mechanism flashcards. |
+| **🔍 Hybrid Retrieval Engine** | High-precision **Reciprocal Rank Fusion (RRF)** combining Dense Vector Search on Zilliz Cloud with BM25 keyword matching for optimal academic recall. |
+| **📊 Enterprise RAG Triad Evaluation** | Evaluates **Faithfulness** (sentence-level claim verification), **Answer Relevancy**, **Context Precision** (signal-to-noise ratio), and **Context Recall**. |
+| **🖼️ Intelligent Image Lightbox** | Extracts charts, brain scans, and diagrams from the textbook and serves them via high-speed Cloudinary CDN alongside grounded answers. |
+| **🗺️ Interactive D3 Knowledge Graph** | Dynamic hierarchical visualization of chapters and section chunk distributions with real-time topic filtering. |
+| **🛡️ Resilient Architecture** | Built on Groq (Llama-3.3-70b), Zilliz Cloud, and Streamlit with comprehensive UI fallback sentinels for 401, 429, and 500 API states. |
 
 ---
 
@@ -156,18 +156,22 @@ Want to use NeuroNauts for a different textbook? It's incredibly easy to adapt o
 
 ```text
 WCEHackathon2026_NeuroNauts/
-├── app/                        # Streamlit Frontend & Core RAG Logic
-│   ├── app.py                  # Main App, Prompt Engineering & UI Rendering
-│   ├── retrieve.py             # Zilliz Database Connections & Search logic
-│   ├── generate.py             # Groq API Abstraction Layer
-│   └── headless_eval.py        # Automated Headless Evaluation Script
-├── pipeline/                   # Powerful Automated PDF Ingestion Pipeline
+├── app/                        # Streamlit Frontend & Multi-Mode Modules
+│   ├── app.py                  # Main App, Multi-Mode Navigation & UI
+│   ├── eval_suite.py           # Enterprise RAG Triad Multi-Metric Evaluation Engine
+│   ├── psych_lab.py            # Clinical Case Simulator & Diagnostic Rubric Evaluator
+│   ├── study_hub.py            # Active Recall Flashcards & Adaptive Quiz Generator
+│   ├── knowledge_graph.py      # D3.js Interactive Knowledge Graph Visualizer
+│   ├── retrieve.py             # Hybrid Dense (Zilliz) + BM25 RRF Retrieval Engine
+│   ├── generate.py             # Groq Llama-3.3-70b Grounded Generation Layer
+│   └── headless_eval.py        # Automated CLI Benchmark & Evaluation Script
+├── pipeline/                   # Automated PDF Ingestion Pipeline
 │   └── (Docling Parsers, PyMuPDF extractors, Recursive Chunking)
 ├── scripts/                    # Infrastructure Migration & Cleanup Toolkit
 │   ├── migrate_to_zilliz.py    # Uplift script for moving local DB to Zilliz
 │   ├── upload_images_to_cloud.py # Asset migration to Cloudinary
 │   └── fix_image_refs.py       # Cloud DB JSON string serialization rectifier
-├── queries.json                # Standardized testing metrics
+├── queries.json                # Standardized testing queries
 └── requirements.txt            # Modern, cloud-native project dependencies
 ```
 
