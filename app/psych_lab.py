@@ -132,7 +132,7 @@ def _call_patient_llm(groq_client, model: str, case: dict, history: list, user_q
         )
         return completion.choices[0].message.content.strip()
     except Exception as e:
-        return f"(Elena looks down anxiously and pauses) ... I'm sorry, I'm having trouble finding the words right now. (Error: {e})"
+        return f"({case['patient_name']} pauses and looks down) ... I'm sorry, I'm having trouble finding the words right now."
 
 
 def _grade_clinical_submission(groq_client, model: str, case: dict, diagnosis: str, mechanism: str, treatment: str) -> dict:
@@ -209,12 +209,9 @@ def show_psych_lab_page(get_groq_client_fn, get_groq_model_fn):
                 </svg>
             </div>
             <div>
-                <div style="display:flex;align-items:center;gap:8px;">
-                    <h2 style="margin:0;font-size:1.65rem;font-weight:800;color:#0F172A;letter-spacing:-0.02em;">PsychLab · Clinical Consultation Simulator</h2>
-                    <span style="font-size:0.68rem;font-weight:700;padding:2px 8px;border-radius:6px;background:#DCFCE7;color:#15803D;border:1px solid #BBF7D0;">CLINICAL HUD</span>
-                </div>
+                <h2 style="margin:0;font-size:1.55rem;font-weight:700;color:#0F172A;letter-spacing:-0.02em;">PsychLab &mdash; Clinical Consultation Simulator</h2>
                 <p style="margin:4px 0 0;font-size:0.86rem;color:#64748B;font-weight:500;">
-                    Live intake interview simulator &nbsp;·&nbsp; Diagnostic hypothesis testing &nbsp;·&nbsp; Automated OpenStax & DSM-5 rubric grading
+                    Live intake interview simulator &nbsp;&middot;&nbsp; Diagnostic hypothesis testing &nbsp;&middot;&nbsp; Automated OpenStax &amp; DSM-5 rubric grading
                 </p>
             </div>
         </div>
@@ -263,7 +260,8 @@ def show_psych_lab_page(get_groq_client_fn, get_groq_model_fn):
                 <div style="font-size:0.88rem;color:#475569;margin-bottom:6px;"><strong>Occupation:</strong> {selected_case['occupation']}</div>
                 <div style="font-size:0.9rem;color:#047857;font-style:italic;font-weight:500;">{selected_case['chief_complaint']}</div>
             </div>
-            <div style="text-align:right;background:white;padding:10px 14px;border-radius:10px;border:1px solid #E2E8F0;">
+            <div style="text-align:right;background:white;padding:10px 14px;border-radius:10px;border:1px solid #E2E8F0;min-width:200px;
+                        text-align:left;">
                 <div style="font-size:0.7rem;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:0.05em;">Clinical Vitals Summary</div>
                 <div style="font-size:0.78rem;color:#0F172A;margin-top:4px;font-weight:600;">{selected_case['vital_summary']}</div>
             </div>
@@ -271,7 +269,7 @@ def show_psych_lab_page(get_groq_client_fn, get_groq_model_fn):
     </div>
     """, unsafe_allow_html=True)
 
-    tab1, tab2 = st.tabs(["💬 Clinical Intake Interview", "📋 Submit Diagnostic Assessment"])
+    tab1, tab2 = st.tabs(["Clinical Intake Interview", "Submit Diagnostic Assessment"])
 
     with tab1:
         st.markdown("<p style='font-size:0.88rem;color:#475569;font-weight:500;'>Conduct an open-ended intake interview with the patient to isolate symptom onset, cognitive distortions, and behavioral triggers.</p>", unsafe_allow_html=True)
@@ -284,7 +282,7 @@ def show_psych_lab_page(get_groq_client_fn, get_groq_model_fn):
             st.markdown(f"""
             <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
                 <div style="background:linear-gradient(135deg, #4F46E5 0%, #3730A3 100%);color:white;padding:12px 20px;border-radius:16px 16px 2px 16px;max-width:75%;font-size:0.92rem;box-shadow:0 4px 12px rgba(79,70,229,0.22);">
-                    <div style="font-size:0.72rem;font-weight:700;opacity:0.85;margin-bottom:2px;">CLINICIAN (YOU):</div>
+                    <div style="font-size:0.68rem;font-weight:700;opacity:0.8;margin-bottom:3px;letter-spacing:0.05em;text-transform:uppercase;">Clinician</div>
                     {html.escape(turn['user'])}
                 </div>
             </div>
@@ -293,8 +291,8 @@ def show_psych_lab_page(get_groq_client_fn, get_groq_model_fn):
             st.markdown(f"""
             <div style="display:flex;justify-content:flex-start;margin-bottom:18px;">
                 <div style="background:#FFFFFF;color:#0F172A;border:1.5px solid #E2E8F0;padding:14px 22px;border-radius:16px 16px 16px 2px;max-width:80%;font-size:0.92rem;box-shadow:0 3px 10px rgba(0,0,0,0.03);">
-                    <div style="font-size:0.72rem;font-weight:800;color:#059669;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.04em;">
-                        👤 {selected_case['patient_name']} (Patient):
+                    <div style="font-size:0.68rem;font-weight:700;color:#059669;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.05em;">
+                        {selected_case['patient_name']}
                     </div>
                     {html.escape(turn['patient'])}
                 </div>
@@ -306,7 +304,7 @@ def show_psych_lab_page(get_groq_client_fn, get_groq_model_fn):
         with c_in1:
             patient_q = st.text_input("Ask patient a question…", key=f"q_{selected_case['id']}", label_visibility="collapsed", placeholder="e.g. When did these panic sensations first happen? What thoughts go through your mind?")
         with c_in2:
-            send_btn = st.button("Speak 🗣️", key=f"btn_{selected_case['id']}", use_container_width=True)
+            send_btn = st.button("Ask Patient", key=f"btn_{selected_case['id']}", use_container_width=True)
 
         if send_btn and patient_q.strip():
             with st.spinner("Patient is responding…"):
@@ -320,7 +318,7 @@ def show_psych_lab_page(get_groq_client_fn, get_groq_model_fn):
                 st.rerun()
 
         if history:
-            if st.button("Clear Interview History ↺", key=f"clr_{selected_case['id']}", type="secondary"):
+            if st.button("Clear History", key=f"clr_{selected_case['id']}", type="secondary"):
                 st.session_state.case_dialogues[selected_case["id"]] = []
                 st.rerun()
 
@@ -331,7 +329,7 @@ def show_psych_lab_page(get_groq_client_fn, get_groq_model_fn):
         mech_input = st.text_area("2. Underlying Psychological Mechanism / Theory:", placeholder="e.g. Classical conditioning where interoceptive sensations (rapid heart rate) become conditioned stimuli triggering anticipatory panic...", key=f"m_{selected_case['id']}")
         treat_input = st.text_area("3. Proposed Intervention & Treatment Plan:", placeholder="e.g. Cognitive Behavioral Therapy (CBT) with interoceptive exposure and systematic desensitization...", key=f"t_{selected_case['id']}")
 
-        if st.button("🎓 Submit Report for Evaluation", type="primary", key=f"sub_{selected_case['id']}"):
+        if st.button("Submit Assessment", type="primary", key=f"sub_{selected_case['id']}"):
             if not diag_input.strip():
                 st.warning("Please enter a proposed primary diagnosis first.")
             else:
@@ -340,7 +338,7 @@ def show_psych_lab_page(get_groq_client_fn, get_groq_model_fn):
                     model = get_groq_model_fn()
                     eval_result = _grade_clinical_submission(client, model, selected_case, diag_input, mech_input, treat_input)
                     st.session_state.case_evaluations[selected_case["id"]] = eval_result
-                    st.success("✅ Diagnostic report evaluated!"); st.rerun()
+                    st.success("Diagnostic report evaluated!"); st.rerun()
 
         # Display Evaluation Scorecard if available
         eval_res = st.session_state.case_evaluations.get(selected_case["id"])
@@ -373,13 +371,13 @@ def show_psych_lab_page(get_groq_client_fn, get_groq_model_fn):
 
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px;">
                     <div style="background:white;padding:14px 18px;border-radius:10px;border:1px solid #E2E8F0;">
-                        <span style="font-size:0.82rem;font-weight:700;color:#15803D;">✓ Key Strengths</span>
+                        <span style="font-size:0.82rem;font-weight:700;color:#15803D;">Strengths</span>
                         <ul style="margin:8px 0 0;padding-left:18px;font-size:0.84rem;color:#334155;">
                             {''.join(f'<li style="margin-bottom:4px;">{html.escape(s)}</li>' for s in eval_res.get('strengths', []))}
                         </ul>
                     </div>
                     <div style="background:white;padding:14px 18px;border-radius:10px;border:1px solid #E2E8F0;">
-                        <span style="font-size:0.82rem;font-weight:700;color:#B45309;">⚠️ Missed Clues & Differentials</span>
+                        <span style="font-size:0.82rem;font-weight:700;color:#B45309;">Areas for Improvement</span>
                         <ul style="margin:8px 0 0;padding-left:18px;font-size:0.84rem;color:#334155;">
                             {''.join(f'<li style="margin-bottom:4px;">{html.escape(d)}</li>' for d in eval_res.get('differential_diagnoses', []))}
                         </ul>

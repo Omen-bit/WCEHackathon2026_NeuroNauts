@@ -289,7 +289,7 @@ def show_knowledge_graph_page(chunks_path: Path):
 body{{ background: transparent; font-family: 'Inter', system-ui, sans-serif; overflow: hidden; }}
 
 #gc{{
-    width: 100%; height: 600px; position: relative;
+    width: 100%; height: min(600px, 60vh); position: relative;
     border: 1px solid #E2E8F0; border-radius: 16px;
     background-color: #FDFDFF;
     background-image: radial-gradient(#E2E8F0 1px, transparent 1px);
@@ -490,7 +490,7 @@ svg.call(zoom.transform, d3.zoomIdentity.translate(W/2,H/2).scale(0.8));
 </body>
 </html>"""
 
-    components.html(html_code, height=620, scrolling=False)
+    components.html(html_code, height=640, scrolling=False)
 
     # ── Quick Explore Grid ────────────────────────────────────────────────────
     st.markdown("<div style='height:32px;'></div>", unsafe_allow_html=True)
@@ -507,7 +507,7 @@ svg.call(zoom.transform, d3.zoomIdentity.translate(W/2,H/2).scale(0.8));
     chapters_sorted = sorted([n for n in graph["nodes"] if n["type"] == "chapter"], key=lambda x: x["num"])
 
     # Responsive Grid for buttons via Streamlit columns (CSS handles stacking)
-    cols_per_row = 4
+    cols_per_row = 3
     for i in range(0, len(chapters_sorted), cols_per_row):
         row  = chapters_sorted[i:i + cols_per_row]
         cols = st.columns(cols_per_row, gap="small")
