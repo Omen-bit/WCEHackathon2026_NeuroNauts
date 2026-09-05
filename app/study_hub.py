@@ -175,8 +175,8 @@ FLASHCARD_CSS = """
     letter-spacing: -0.02em;
 }
 .fc-definition-box {
-    background: #0B0F19;
-    border: 1.5px solid #312E81;
+    background: #1E1B4B;
+    border: 1.5px solid #3730A3;
     border-radius: 12px;
     padding: 16px 20px;
     color: #F8FAFC;
@@ -192,6 +192,13 @@ FLASHCARD_CSS = """
     letter-spacing: 0.08em;
     color: #A5B4FC;
     margin-bottom: 6px;
+}
+/* Mobile: single-column flashcard layout */
+@media (max-width: 640px) {
+    div[data-testid="stHorizontalBlock"]:has(.fc-card) > div[data-testid="column"] {
+        min-width: 100% !important;
+        flex: 1 1 100% !important;
+    }
 }
 </style>
 """
@@ -311,12 +318,9 @@ def show_study_hub_page(get_groq_client_fn, get_groq_model_fn):
                 </svg>
             </div>
             <div>
-                <div style="display:flex;align-items:center;gap:8px;">
-                    <h2 style="margin:0;font-size:1.65rem;font-weight:800;color:#0F172A;letter-spacing:-0.02em;">Active Recall Study Hub</h2>
-                    <span style="font-size:0.68rem;font-weight:700;padding:2px 8px;border-radius:6px;background:#F5F3FF;color:#7C3AED;border:1px solid #DDD6FE;">ACTIVE RECALL</span>
-                </div>
+                <h2 style="margin:0;font-size:1.55rem;font-weight:700;color:#0F172A;letter-spacing:-0.02em;">Active Recall Study Hub</h2>
                 <p style="margin:4px 0 0;font-size:0.86rem;color:#64748B;font-weight:500;">
-                    Interactive flashcard decks &nbsp;·&nbsp; Adaptive diagnostic quizzes &nbsp;·&nbsp; Instant distractor analysis
+                    Interactive flashcard decks &nbsp;&middot;&nbsp; Adaptive diagnostic quizzes &nbsp;&middot;&nbsp; Instant distractor analysis
                 </p>
             </div>
         </div>
@@ -331,7 +335,7 @@ def show_study_hub_page(get_groq_client_fn, get_groq_model_fn):
     with c_sel2:
         quiz_diff = st.selectbox("Quiz Rigor:", ["College Standard", "AP Advanced / Clinical"], index=0)
 
-    hub_tab1, hub_tab2 = st.tabs(["🃏 Active Recall Flashcards", "📝 Adaptive Diagnostic Quiz"])
+    hub_tab1, hub_tab2 = st.tabs(["Flashcards", "Adaptive Quiz"])
 
     # ─── TAB 1: ACTIVE RECALL FLASHCARDS ──────────────────────────────────────
     with hub_tab1:
@@ -369,7 +373,7 @@ def show_study_hub_page(get_groq_client_fn, get_groq_model_fn):
             </div>
             """, unsafe_allow_html=True)
         with c_top2:
-            if st.button("✨ Generate AI Deck", type="secondary", use_container_width=True):
+            if st.button("Generate Deck", type="secondary", use_container_width=True):
                 with st.spinner("Synthesizing textbook concepts with Groq AI…"):
                     client = get_groq_client_fn()
                     model = get_groq_model_fn()
@@ -401,7 +405,7 @@ def show_study_hub_page(get_groq_client_fn, get_groq_model_fn):
                             </span>
                         </div>
                         <div class="fc-term-title">{term_escaped}</div>
-                        {f'<div class="fc-definition-box"><div class="fc-def-label">🧠 Mechanism & Definition</div>{def_escaped}</div>' if is_revealed else '<div style="font-size:0.8rem;color:#94A3B8;padding:12px 0;font-style:italic;">Click "Reveal Mechanism" below to check your understanding.</div>'}
+                        {f'<div class="fc-definition-box"><div class="fc-def-label">Definition</div>{def_escaped}</div>' if is_revealed else '<div style="font-size:0.8rem;color:#94A3B8;padding:12px 0;font-style:italic;">Click "Show Definition" to check your understanding.</div>'}
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -409,17 +413,17 @@ def show_study_hub_page(get_groq_client_fn, get_groq_model_fn):
                 # Interactive Action Bar below each card
                 b_c1, b_c2, b_c3 = st.columns([2, 1, 1])
                 with b_c1:
-                    btn_label = "Hide ✕" if is_revealed else "Reveal Mechanism 👁️"
+                    btn_label = "Hide" if is_revealed else "Show Definition"
                     if st.button(btn_label, key=f"rev_{cid}", use_container_width=True):
                         st.session_state.card_revealed[cid] = not is_revealed
                         st.rerun()
                 with b_c2:
-                    if st.button("⭐ Got It", key=f"mast_{cid}", use_container_width=True):
+                    if st.button("Mastered", key=f"mast_{cid}", use_container_width=True):
                         st.session_state.card_mastery[cid] = "mastered"
                         st.session_state.card_revealed[cid] = True
                         st.rerun()
                 with b_c3:
-                    if st.button("🔄 Review", key=f"revw_{cid}", use_container_width=True):
+                    if st.button("Mark Review", key=f"revw_{cid}", use_container_width=True):
                         st.session_state.card_mastery[cid] = "review"
                         st.session_state.card_revealed[cid] = True
                         st.rerun()
@@ -432,8 +436,9 @@ def show_study_hub_page(get_groq_client_fn, get_groq_model_fn):
             st.session_state.quiz_data = None
             st.session_state.user_answers = {}
             st.session_state.quiz_submitted = False
+            st.session_state._last_quiz_ch = selected_chapter
 
-        if st.button("✨ Generate New Quiz", type="primary"):
+        if st.button("Generate Quiz", type="primary"):
             with st.spinner("Generating conceptual quiz items from OpenStax textbook…"):
                 client = get_groq_client_fn()
                 model = get_groq_model_fn()
@@ -485,7 +490,7 @@ def show_study_hub_page(get_groq_client_fn, get_groq_model_fn):
                     """, unsafe_allow_html=True)
 
             if not st.session_state.quiz_submitted:
-                if st.button("📊 Submit Quiz for Grading", type="primary"):
+                if st.button("Submit Quiz", type="primary"):
                     st.session_state.quiz_submitted = True
                     st.rerun()
             else:
@@ -498,10 +503,10 @@ def show_study_hub_page(get_groq_client_fn, get_groq_model_fn):
                 pct = round((correct_total / len(quiz_items)) * 100)
                 st.markdown(f"""
                 <div style="text-align:center;background:#FFFFFF;border:2px solid #E2E8F0;border-radius:16px;padding:24px;margin-top:1.5rem;box-shadow:0 4px 16px rgba(0,0,0,0.03);">
-                    <div style="font-size:0.75rem;font-weight:800;color:#64748B;letter-spacing:0.06em;">OVERALL PERFORMANCE</div>
+                    <div style="font-size:0.72rem;font-weight:700;color:#64748B;letter-spacing:0.08em;text-transform:uppercase;">Quiz Result</div>
                     <div style="font-size:2.4rem;font-weight:800;color:#4F46E5;font-family:'JetBrains Mono', monospace;margin:4px 0;">{correct_total}/{len(quiz_items)} ({pct}%)</div>
                     <p style="font-size:0.88rem;color:#475569;margin:0;font-weight:500;">
-                        {'Outstanding mastery of chapter concepts!' if pct >= 75 else 'Good attempt! Review the explanations above to strengthen weak areas.'}
+                        {'Outstanding mastery of chapter concepts.' if pct >= 75 else 'Good attempt. Review the explanations above to strengthen weak areas.'}
                     </p>
                 </div>
                 """, unsafe_allow_html=True)
