@@ -10,7 +10,7 @@ transformers==4.49.0
 accelerate==1.13.0
 safetensors==0.5.3
 tokenizers==0.21.0
-sentence-transformers==3.4.1
+sentence-transformers==3.5.0
 einops==0.8.0
 
 # --- Document Processing (Docling) ---
