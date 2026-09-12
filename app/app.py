@@ -21,6 +21,28 @@ st.set_page_config(
     initial_sidebar_state= "expanded",
 )
 
+# ─── Sidebar toggle button visibility fix ─────────────────────────────────────
+st.markdown("""
+<style>
+/* Sidebar collapse / expand toggle button */
+[data-testid="collapsedControl"] {
+    background-color: #4F46E5 !important;
+    border-radius: 10px !important;
+    color: #ffffff !important;
+    box-shadow: 0 4px 14px rgba(79, 70, 229, 0.5) !important;
+    transition: background-color 0.2s ease, transform 0.2s ease !important;
+}
+[data-testid="collapsedControl"]:hover {
+    background-color: #4338CA !important;
+    transform: scale(1.08) !important;
+}
+[data-testid="collapsedControl"] svg {
+    fill: #ffffff !important;
+    stroke: #ffffff !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 # ─── Groq SDK ─────────────────────────────────────────────────────────────────
 try:
     from groq import (
